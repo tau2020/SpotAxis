@@ -59,8 +59,3 @@ class RichTextFormField(forms.fields.CharField):
         kwargs.update({'widget': CKEditorWidget(config_name=config_name, extra_plugins=extra_plugins, external_plugin_resources=external_plugin_resources)})
         super(RichTextFormField, self).__init__(*args, **kwargs)
 
-try:
-    from south.modelsinspector import add_introspection_rules
-    add_introspection_rules([], [r"^ckeditor\.fields\.RichTextField"])
-except:
-    pass

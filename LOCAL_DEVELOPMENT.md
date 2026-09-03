@@ -1,222 +1,111 @@
 # Running SpotAxis locally
 
-A verified, from-scratch local setup. Everything below was run end to end on
-macOS (Apple Silicon); the Linux notes are called out where they differ.
+Verified from scratch on macOS (Apple Silicon); Linux differences are noted.
 
 ## 1. Prerequisites
 
 | Tool | Version | Why |
 | --- | --- | --- |
-| Python | 3.12+ | `pyproject.toml` requires `>=3.12` (Django 5.2). `.python-version` pins 3.12. |
-| [uv](https://docs.astral.sh/uv/getting-started/installation/) | any recent | Dependency install, per `installguide.md`. |
-| Docker | any recent | Runs MySQL. Skip if you already have MySQL **8.4+** locally. |
-| Pango / GLib / cairo / gdk-pixbuf | — | Native libraries WeasyPrint loads at import time. Without them Django will not even start. |
-
-MySQL **8.4 or newer** is required — Django 5.2 refuses to connect to 8.0.
-
-Install the native libraries:
+| Python | 3.12+ | `pyproject.toml` requires `>=3.12`; `.python-version` pins 3.12. |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | 0.7+ | Dependency install and lockfile. |
+| PostgreSQL | 16+ | The application database. Homebrew, Docker, or any local install. |
+| Pango / GLib / cairo / gdk-pixbuf | — | Native libraries WeasyPrint loads at import time for PDF export. |
 
 ```bash
 # macOS
-brew install uv pango gdk-pixbuf libffi
+brew install uv postgresql@16 pango gdk-pixbuf libffi
+brew services start postgresql@16
 
 # Debian / Ubuntu
-sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libfontconfig1
+sudo apt install postgresql libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libfontconfig1 libcairo2 libgdk-pixbuf-2.0-0
 ```
 
-## 2. Environment setup
+Docker alternative for the database:
 
 ```bash
-cd SpotAxis
+docker run -d --name spotaxis-postgres -e POSTGRES_USER=spotaxis -e POSTGRES_PASSWORD=spotaxis \
+  -e POSTGRES_DB=spotaxis -p 5432:5432 postgres:16
+# then set DATABASE_URL=postgres://spotaxis:spotaxis@localhost:5432/spotaxis in .env
+```
+
+## 2. Environment
+
+```bash
 cp .env.example .env
+python3 -c "from secrets import token_urlsafe; print(token_urlsafe(50))"   # paste as SECRET_KEY
 ```
 
-Then put a real key in `.env` (the placeholder is deliberately not a valid secret):
+Everything is driven by environment variables (see `.env.example`). The ones that matter locally:
+
+- `DATABASE_URL` — defaults to `postgres://localhost:5432/spotaxis`.
+- `SITE_SUFFIX=.spotaxis.localhost:8010/` — company careers sites live at `<slug>.spotaxis.localhost:8010`; the host part is the main site. **The port must match the port you run the server on.**
+- `EMAIL_BACKEND` — console backend prints all mail to the terminal.
+
+No `/etc/hosts` edit is needed: macOS and Linux resolve `*.localhost` to 127.0.0.1.
+
+## 3. Install and initialise
 
 ```bash
-python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
+uv sync --group dev                      # creates .venv with app + dev dependencies
+createdb spotaxis                        # or use the Docker container above
+uv run python manage.py migrate
+PATH="$PWD/.venv/bin:$PATH" bash loaddata_from_apps.sh   # countries, currencies, degrees, plans, ...
+uv run python manage.py createsuperuser
 ```
 
-`.env.example` ships safe local placeholders only — no production hosts, no real
-credentials. The values that matter:
-
-- `ENVIRONMENT='local_development'` turns `DEBUG` on.
-- `site_suffix='.spotaxis.localhost:8010/'` — **the port must match the port you
-  run the server on.** `TRM.middleware.SubdomainMiddleware` returns 404 for any
-  host that is neither a registered company subdomain nor the host part of
-  `site_suffix`, and the company / vacancy models build their public URLs from
-  this same value.
-- `email_backend` is Django's console backend, so signup and notification mail is
-  printed to the `runserver` terminal instead of needing an SMTP account.
-- Every third-party credential (PayPal, LinkedIn, Facebook, …) is blank. Nothing
-  in the local flow needs them.
-
-No `/etc/hosts` edit is needed: macOS and Linux both resolve `*.localhost` to
-127.0.0.1, so `spotaxis.localhost` and `<company>.spotaxis.localhost` work as-is.
-The middle label has to stay `spotaxis`, because `TRM.settings.ROOT_DOMAIN` is
-hardcoded to `"spotaxis"` per environment.
-
-## 3. Install
+## 4. Run
 
 ```bash
-uv venv --python 3.12
-uv pip install -r pyproject.toml
+uv run python manage.py runserver 8010
 ```
-
-Activate with `source .venv/bin/activate`, or prefix commands with
-`.venv/bin/python` as shown below.
-
-## 4. Start the database
-
-```bash
-docker run -d --name spotaxis-mysql \
-  -e MYSQL_ROOT_PASSWORD=spotaxis_root \
-  -e MYSQL_DATABASE=TRM_local \
-  -e MYSQL_USER=TRM_user \
-  -e MYSQL_PASSWORD=spotaxis_local_pass \
-  -p 3307:3306 \
-  mysql:8.4
-```
-
-Port 3307 keeps it clear of any MySQL already on 3306. Wait for it to accept
-connections, then create the schema and load the reference data:
-
-```bash
-until docker exec spotaxis-mysql mysqladmin ping -h127.0.0.1 -uroot -pspotaxis_root >/dev/null 2>&1; do sleep 1; done
-
-.venv/bin/python manage.py migrate
-PATH="$PWD/.venv/bin:$PATH" bash loaddata_from_apps.sh   # countries, currencies, plans, ...
-.venv/bin/python manage.py createsuperuser
-```
-
-Only if you intend to run the test suite, also let the app user create test
-databases:
-
-```bash
-docker exec -i spotaxis-mysql mysql -uroot -pspotaxis_root \
-  -e "GRANT ALL PRIVILEGES ON \`test\_%\`.* TO 'TRM_user'@'%'; FLUSH PRIVILEGES;"
-```
-
-Restart later with `docker start spotaxis-mysql`.
-
-## 5. Run SpotAxis
-
-```bash
-.venv/bin/python manage.py runserver 8010
-```
-
-Use 8010 (or change it in **both** the command and `site_suffix`). Port 8000 is a
-common collision on a developer machine, and a mismatched `site_suffix` makes
-every page 404 through the subdomain middleware.
-
-## 6. Local URLs
 
 | URL | What |
 | --- | --- |
 | http://spotaxis.localhost:8010/ | Main site / job board |
 | http://spotaxis.localhost:8010/jobs/ | Public job search |
-| http://spotaxis.localhost:8010/login/ | Login |
+| http://spotaxis.localhost:8010/login/ | Login (use the **username**, not the email) |
 | http://spotaxis.localhost:8010/signup/talent/ | Candidate signup |
 | http://spotaxis.localhost:8010/signup/employer/ | Employer signup |
 | http://spotaxis.localhost:8010/admin/ | Django admin |
-| http://spotaxis.localhost:8010/api/common/countries/ | REST API (see `*/api/urls.py`, `vacancies_api/`, `companies_api/`) |
-| http://&lt;slug&gt;.spotaxis.localhost:8010/ | A company career site |
+| http://spotaxis.localhost:8010/healthz | Health check (JSON) |
+| http://&lt;slug&gt;.spotaxis.localhost:8010/ | A company careers site and its recruiter dashboard |
 
-`http://localhost:8010/` returns 404 on purpose — the host must match
-`site_suffix`. For a career site, create a `Subdomain` in the admin, attach it to
-a `Company`, and browse to its slug.
+`http://localhost:8010/` returns 404 on purpose: the host must be the main host or a registered company subdomain. New accounts land inactive; the activation link is printed to the terminal by the console email backend.
 
-## 7. Test accounts
+Sessions are per host, so log in to a company on **its** subdomain.
 
-Seeded in the local database. All local-only placeholders — none of these exist
-anywhere but your machine. Log in with the **username**, not the email (the login
-field is styled as an email input, but `User.USERNAME_FIELD` is `username`).
-
-| Role | Username | Password | Where to log in |
-| --- | --- | --- | --- |
-| Superuser | `admin` | `admin12345` | http://spotaxis.localhost:8010/admin/ |
-| Candidate | `candidate` | `SpotAxis!234` | http://spotaxis.localhost:8010/login/ |
-| Recruiter | `employer` | `SpotAxis!234` | the company subdomain, below |
-
-The recruiter owns a demo company, **Acme Robotics**, whose career site and
-dashboard live on its own subdomain:
-
-    http://acmeroboticsemBO.spotaxis.localhost:8010/
-
-Sessions are per-host, so log in as `employer` **on that subdomain**, not on
-`spotaxis.localhost`. Once there: `/profile/company/`, `/team/`, `/billing/`,
-`/profile/employer/`, and `/job/edit/` (create a job opening).
-
-As `candidate` on the main site: `/profile/`, `/appliedjobs/`, `/applylater/`,
-`/notifications/`.
-
-Recreate any of these with:
+## 5. Checks
 
 ```bash
-.venv/bin/python manage.py createsuperuser
+uv run ruff check .
+uv run python manage.py check
+uv run python manage.py makemigrations --check --dry-run
+uv run pytest -q
 ```
 
-or by signing up at `/signup/talent/` or `/signup/employer/` — new accounts land
-inactive, and the activation link is printed to the `runserver` console by the
-email backend.
-
-Note that the `admin` superuser has no candidate/recruiter profile, so logging it
-into the **front-end** `/login/` form leads to a 500 at `/redirect/`, which
-branches on `profile.codename`. Use `/admin/` for the superuser and the role
-accounts for the app itself.
-
-## 8. Checks
+Pre-commit hooks (ruff, whitespace, private-key detection):
 
 ```bash
-.venv/bin/python manage.py check                            # clean
-.venv/bin/python manage.py test common companies vacancies candidates payments
+uv run pre-commit install
 ```
 
-## 9. Known limitations
+## 6. Scheduled tasks
 
-These are pre-existing to the codebase, not artifacts of the local setup:
+There is no worker process. Periodic work (publishing/unpublishing jobs on their scheduled dates) runs through `python manage.py run_tasks`, or over HTTP with `POST /internal/tasks/run` and `Authorization: Bearer $TASK_RUNNER_TOKEN`. In production a GitHub Actions schedule calls the endpoint every five minutes (`.github/workflows/scheduled-tasks.yml`).
 
-- **8 failing tests in `common/tests/test_models.py`.** They assert the `User`
-  model uses `email` as `USERNAME_FIELD` and has a `_username` field; the model
-  uses `username`. Stale tests, unrelated to the environment. The other 7 pass.
-- **`makemigrations --check` reports drift** for `common.Subdomain`'s Meta
-  options. `common/models.py` has a `__str__` dedented out of the class body
-  (line 473), which leaves the `class Meta` below it unreachable.
-- **`collectstatic` needs `static_root` set** in `.env`. Not required locally —
-  `DEBUG` serves static files straight from `TRM/static`.
-- **Sessions are per-host.** `session_cookie_domain` is empty because a shared
-  `.spotaxis.localhost` cookie is not honoured by every browser, so logging in on
-  the main site does not carry to a company subdomain — log in again there. The
-  upstream `CrossDomainSessionMiddleware` that would have handled this is
-  commented out in `TRM/settings.py`.
-- **A user with no profile 500s at `/redirect/`.** `common.views.redirect_after_login`
-  branches on `profile.codename`; a bare superuser has none. Pre-existing.
-- **Generated career-site links hardcode whatever port is in `site_suffix`.**
-  `Company.getcompanyurl()` and the vacancy models concatenate the slug with
-  `site_suffix`, so if you change the runserver port you must change it there
-  too or those links point at the wrong port.
-- **Third-party integrations are inert**: PayPal checkout, OAuth social login,
-  and the resume parser's Selenium paths all need real credentials or a browser
-  driver. `zinnia` (blog) and `helpdesk` are commented out of `INSTALLED_APPS`
-  upstream and stay that way.
-- **Outbound email is console-only** by design; nothing leaves the machine.
+## 7. Docker
 
-## What was changed to make this run
+```bash
+docker build -t spotaxis .
+docker run --rm -p 8000:8000 -e DATABASE_URL=postgres://host.docker.internal:5432/spotaxis \
+  -e SECRET_KEY=dev -e DEBUG=true -e SITE_SUFFIX=.spotaxis.localhost:8000/ spotaxis
+```
 
-Three source files, all backwards compatible with the production configuration:
+The image runs migrations on start and serves with gunicorn; static files are collected at build time and served by WhiteNoise.
 
-- `TRM/__init__.py` — adds Homebrew's library directory to
-  `DYLD_FALLBACK_LIBRARY_PATH` on macOS so WeasyPrint's `dlopen` finds Pango and
-  GLib. It is set in-process because System Integrity Protection strips `DYLD_*`
-  from the environment whenever `/bin/sh` or `/usr/bin/env` spawns the
-  interpreter, which makes exporting it from a shell unreliable. Also aliases
-  `django.utils.encoding.smart_text` to `smart_str`; `django-tagging` 0.5.0 still
-  imports the name Django removed in 4.0, and it breaks the app registry.
-- `TRM/middleware.py` — the main-site host check now strips a port off
-  `SITE_SUFFIX` before comparing it to the request host, so `site_suffix` can
-  carry the local port. No-op when `SITE_SUFFIX` has no port.
-- `TRM/context_processors.py` — `active_host` is derived from `SITE_SUFFIX`
-  instead of a hardcoded `.com`. Produces the identical string under the
-  production default.
+## 8. Known limitations (pre-existing)
 
-Dependencies in `pyproject.toml` / `uv.lock` were not touched.
+- **Uploaded files are stored on local disk** (`./media`). Object storage arrives in Phase 1 of the MVP plan.
+- **Third-party integrations are inert**: social login, social sharing and PayPal checkout were removed or disabled; billing returns post-MVP.
+- **Superuser without a profile**: logging a bare superuser into the front-end `/login/` form 500s at `/redirect/`. Use `/admin/` for the superuser and a recruiter/candidate account for the app.
+- **Generated careers-site links use the port in `SITE_SUFFIX`**; change both together.

@@ -13,11 +13,9 @@ from django.db import models
 from django.utils import timezone
 from common import registration_settings as registration_settings
 from django.core.mail import EmailMessage, EmailMultiAlternatives
-from django.contrib.sites.models import Site
 from django.template import loader
 from TRM.settings import logo_email, SITE_URL, PHOTO_USER_DEFAULT, NOTIFICATION_EMAILS, MEDIA_URL, SITE_SUFFIX, DEFAULT_FROM_EMAIL, ADMINS
 from phonenumber_field.modelfields import PhoneNumberField
-import types
 
 Name = _('Name')
 
@@ -467,19 +465,17 @@ class Gender(models.Model):
 
 
 class Subdomain(models.Model):
-    cname = models.CharField(verbose_name=_(u'Cname'), max_length=255, null=True, blank=True, default=None, unique=True)
-    slug = models.CharField(verbose_name=_(u'Subdomain'), max_length=255, null=True, blank=True, default=True)
+    cname = models.CharField(verbose_name=_('Cname'), max_length=255, null=True, blank=True, default=None, unique=True)
+    slug = models.CharField(verbose_name=_('Subdomain'), max_length=255, null=True, blank=True, default=None, db_index=True)
 
-def __str__(self):
-    if self.cname:
-        return str(self.cname)
-    else:
+    def __str__(self):
+        if self.cname:
+            return str(self.cname)
         return f"{self.slug}{SITE_SUFFIX}"
-        # return u'%s.%s.%s' % (HOST,self.slug,SITE_URL)
 
     class Meta:
-        verbose_name = _(u'Subdomain')
-        verbose_name_plural = _(u'Subdomain') 
+        verbose_name = _('Subdomain')
+        verbose_name_plural = _('Subdomains')
 
 class SocialAuth(models.Model):
     MEDIA_CHOICES=(

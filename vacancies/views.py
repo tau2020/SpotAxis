@@ -4,22 +4,20 @@ from __future__ import print_function
 import ast
 import json
 import traceback
-from activities.utils import post_activity
 from candidates.models import Candidate, Curriculum, Academic, Academic_Status
 from common.forms import ContactForm
-from common.models import Employment_Type, Country, Gender, User, Profile, SocialAuth, send_TRM_email
-from common.views import debug_token, get_fb_user_groups, get_fb_user_pages, get_li_companies
+from common.models import Employment_Type, Country, Gender, User, SocialAuth, send_TRM_email
+from common.views import debug_token
 from companies.models import Company, Stage, Recruiter, Company_Industry as Industry, ExternalReferal
 from customField.forms import TemplatedForm
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.urls import reverse, NoReverseMatch, resolve
+from django.urls import reverse, resolve
 from django.db.models import Count, Q
-from django.http import QueryDict, HttpResponseNotFound, JsonResponse, Http404, HttpResponse
+from django.http import JsonResponse, Http404, HttpResponse
 from django.shortcuts import render,redirect, get_object_or_404
-from django.template import RequestContext,Context, Node, Library, TemplateSyntaxError, VariableDoesNotExist
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from urllib.parse import urlparse
@@ -27,16 +25,15 @@ from urllib.parse import urlparse
 import datetime
 utc = datetime.timezone.utc
 from django.utils.translation import gettext as _
-from django.views.decorators.csrf import csrf_exempt
 from weasyprint import HTML
 from hashids import Hashids
 from payments.models import *
 from TRM.context_processors import subdomain
-from TRM.settings import days_default_search, SITE_URL, LOGO_COMPANY_DEFAULT, num_pages, number_objects_page, MEDIA_ROOT
+from TRM.settings import days_default_search, LOGO_COMPANY_DEFAULT, num_pages, number_objects_page
 from vacancies.forms import BasicSearchVacancyForm, QuestionVacancyForm, Public_FilesForm, Public_Files_OnlyForm, get_notice_period
 from vacancies.models import Vacancy, PubDate_Search, Vacancy_Status, Postulate, Salary_Type, \
     Employment_Experience, Degree,Question, Vacancy_Files, Candidate_Fav, VacancyStage, \
-    Postulate_Stage, Postulate_Score, Comment, Medium
+    Postulate_Stage, Comment, Medium
 from six.moves import range
 from utils import is_ajax
 referer_hash = Hashids(salt='Job Referal', min_length = 5)
@@ -599,7 +596,6 @@ def search_vacancies(request, template_name):
                                'vacancies_search_pub_date_days': request.session.get('vacancies_search_pub_date_days'),
                                }) 
 
-@csrf_exempt
 def vacancy_details(request, vacancy_id=None, referer = None, external_referer = None, social_code=None):
     """
     Handles the display and interaction logic for a specific job vacancy page.
@@ -889,7 +885,6 @@ def vacancy_details(request, vacancy_id=None, referer = None, external_referer =
     allstages = Stage.objects.filter(company=vacancy.company).exclude(id__in=stageids)
     notice_period = get_notice_period()
     vacancy.notice_period = notice_period[int(vacancy.notice_period)]
-    import ast
     if review:
         review = ast.literal_eval(review)
 

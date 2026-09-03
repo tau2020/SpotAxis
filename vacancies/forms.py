@@ -13,10 +13,7 @@ from datetime import datetime, date, timedelta
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from django.forms.widgets import SelectDateWidget
 from django.utils.translation import gettext as _
-from TRM.settings import days_default_search
-from upload_logos.widgets import AjaxClearableFileInput
 from vacancies.models import *
 
 
@@ -669,7 +666,6 @@ class VacancyForm(forms.ModelForm):
         Returns:
             datetime.date
         """
-        import pdb
         pub_after = self.cleaned_data['pub_after']
         pub_date = date.today()
         if self.jm_duration and pub_after:

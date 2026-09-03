@@ -1,0 +1,15 @@
+<script>
+(function () {
+    var token = "{{ csrf_token }}";
+    window.CSRF_TOKEN = token;
+    if (window.jQuery) {
+        jQuery.ajaxSetup({
+            beforeSend: function (xhr, s) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(s.type) && !s.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", token);
+                }
+            }
+        });
+    }
+})();
+</script>

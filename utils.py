@@ -5,8 +5,7 @@ from docx import Document
 from pypdf import PdfReader
 import json
 from datetime import datetime
-from django.db.models import Count
-from payments.models import Discount, Discount_Usage
+from payments.models import Discount
 from time import mktime
 
 def is_ajax(request):
@@ -161,7 +160,6 @@ def generate_random_username(length=10, chars=ascii_lowercase+digits, split=4, d
 import requests
 # import hmac
 # import hashlib
-import json
 from TRM import settings
 
 # def get_fb_app_secret_proof(access_token):
@@ -292,7 +290,10 @@ def posttolicompany(litoken, pageid, message="", og={}):
         )
     print((r.status_code))
     return r
-from requests_oauthlib import OAuth1
+try:
+    from requests_oauthlib import OAuth1
+except ImportError:  # social posting is disabled
+    OAuth1 = None
 from urllib.parse import urlencode
 def posttotwitter(twtoken, message = "", link=""):
     consumer_key = settings.SOCIALAUTH_TWITTER_OAUTH_KEY

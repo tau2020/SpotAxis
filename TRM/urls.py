@@ -4,23 +4,15 @@ from __future__ import absolute_import
 from django.urls import path, re_path, include
 # from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import re_path, include
 from django.contrib import admin
-from django.http import HttpResponse
-from django.views.generic import TemplateView
-from django.views.static import serve
 from django.contrib.auth import views as django_auth_views
-from common.forms import ChangePasswordForm, RecoverUserForm, CustomPasswordResetForm
 from candidates import views as candidates_views
 from common import views as common_views
 from common import ajax as common_ajax_views
 from companies import views as companies_views
 from TRM import views as TRM_views
 from TRM.static_views import RobotsTxtView, SitemapXmlView, GoogleVerificationView
-from example import views as example_views
-from payments import views as payments_views
 from vacancies import views as vacancy_views
-# from socialmultishare import views as socialmultishare_views
 from TRM import settings
 # from django.views.generic.simple import direct_to_template
 from companies.views import upload_vacancy_file, delete_vacancy_file
@@ -30,23 +22,14 @@ handler500 = 'TRM.views.handler500'
 
 urlpatterns = [
     # Admin:
-    path('admin/doc/', include('django.contrib.admindocs.urls')),
     path('admin/', admin.site.urls),
     path('robots.txt', RobotsTxtView.as_view()),
     path('sitemap.xml', SitemapXmlView.as_view()),
     path('google7467b69f25fa8f1e.html', GoogleVerificationView.as_view()),
   
     # API URLs
-    re_path(r'^api/common/', include('common.api.urls')),
-    re_path(r'^api/activities/',include('activities.api.urls')),
-    re_path(r'^api/vacancy/', include('vacancies_api.urls')),
-    # url(r'^api/zinnia/',include('zinna.api.urls')),
-    re_path(r'^api/ckeditor/', include('ckeditor.api.urls')),
-    re_path(r'api/companies/', include('companies_api.urls')),
-    re_path(r'^api/candidates/', include('candidates.api.urls')),
 
     # Resources
-    re_path(r'resources/comments/', include('django_comments.urls')),
     # url(r'resources/', include('zinnia.urls')),
     # url(r'help/', include('helpdesk.urls')),
 
@@ -96,10 +79,6 @@ urlpatterns = [
     path('username/recover/', django_auth_views.PasswordResetView.as_view(), name='recover_user'),
 
     # Common - common.views.py
-    re_path(r'^login/social/(?P<social_code>\w+)/$', common_views.social_login, name="social_login"),
-    re_path(r'^login/social/(?P<social_code>\w+)/(?P<vacancy_id>\d+)/$', common_views.social_login, name="social_login"),
-    re_path(r'^login/social/(?P<social_code>\w+)/(?P<vacancy_id>\d+)/(?P<recruiter_id>\d+)/$', common_views.social_login, name="social_login"),
-    # url(r'^login/social/(?P<social_code>\w+)/(?P<vacancy_id>\d+)/(?P<redirect_type>\d+)/$', common_views.social_login, name="social_login"),
     path('redirect/', common_views.redirect_after_login, name='common_redirect_after_login'),
     path('signup/complete/', common_views.registration_complete, name='common_registration_complete'),
     path('email/change/', common_views.email_change, name='common_email_change'),
@@ -166,8 +145,6 @@ urlpatterns = [
     re_path(r'^careerssite/(?P<setting>\w+)/$', companies_views.site_management, name='companies_site_management'),
     re_path(r'^team/$', companies_views.team_space, name = 'companies_company_team_space'),
     re_path(r'^billing/$', companies_views.billing, name = 'companies_billing'),
-    re_path(r'^payment/$', payments_views.payment, name = 'companies_payment'),
-    re_path(r'^checkout/$', payments_views.checkout, name = 'payments_checkout'),
     # url(r'^profile/company/change/$', companies_views.edit_company, name='companies_edit_company'),
     # url(r'^summary/jobs/$', companies_views.vacancies_summary, name='companies_vacancies_summary'),
     re_path(r'^job/edit/$', companies_views.add_update_vacancy, name='companies_add_update_vacancy'),
@@ -246,11 +223,9 @@ urlpatterns = [
     #Widget Urls
     re_path(r'^widget/jobs/$', companies_views.widget_jobs, name="companies_job_widget"),
 
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-#
-# if settings.DEBUG:
-urlpatterns += [
-    re_path(r'^media/(?P<path>.*)$', serve, {
-        'document_root': settings.MEDIA_ROOT,
-    }),
 ]
+
+urlpatterns = [path('', include('core.urls'))] + urlpatterns
+
+if settings.SERVE_MEDIA:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

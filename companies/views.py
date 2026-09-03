@@ -1,11 +1,11 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
-import decimal
 import json
 import os
 import random
 import re
+import secrets
 import traceback
 from activities.utils import *
 from activities.models import *
@@ -14,12 +14,13 @@ from common import registration_settings
 from common.forms import AdressForm, UserDataForm, BasicUserDataForm, UserPhotoForm, SubdomainForm
 from common.models import Profile, Country, send_email_to_TRM, Gender, Subdomain, send_TRM_email
 from companies.forms import CompanyForm, SearchCvForm, CompanyLogoForm, MemberInviteForm
-from companies.models import Company_Industry, Recommendations, Recommendation_Status, Company, Wallet, Recruiter, Stage, RecruiterInvitation, ExternalReferal
+from companies.models import Company_Industry, Recommendations, Company, Wallet, Recruiter, Stage, RecruiterInvitation, ExternalReferal
 from customField.forms import TemplateForm, FieldFormset
 from datetime import timedelta, datetime, date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from django.conf import settings
+from django.db.models import Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -27,7 +28,7 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.http import Http404, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
-from django.template import RequestContext, Context, TemplateDoesNotExist
+from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.utils.translation import gettext as _
 from django.utils.text import slugify
@@ -35,7 +36,7 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 from hashids import Hashids
 from payments.models import *
 from TRM.context_processors import subdomain
-from TRM.settings import SITE_URL, num_pages, number_objects_page, DEFAULT_SITE_TEMPLATE, STATIC_URL
+from TRM.settings import num_pages, number_objects_page, DEFAULT_SITE_TEMPLATE, STATIC_URL
 from vacancies.forms import VacancyForm, VacancyFileForm, Public_FilesForm
 from vacancies.models import Vacancy, Vacancy_Status, Postulate, Vacancy_Files, VacancyStage
 from vacancies.response import JSONResponse, response_mimetype
@@ -45,7 +46,6 @@ from utils import is_ajax
 
 regex = re.compile('[^A-Za-z0-9]')
 subdomain_hash = Hashids(salt='TRM Subdomain',min_length=4)
-invite_hash = Hashids(salt='Invitation',min_length=7)
 
 
 def record_recruiter(request, token=None):
@@ -238,7 +238,7 @@ def record_company(request):
                 recruiter.membership = 3
                 recruiter.save()
                 Wallet.objects.create(company = new_company, available=0)
-                Subscription.objects.create(company=new_company, price_slab = PriceSlab.objects.get(id=2))
+                Subscription.objects.create(company=new_company, price_slab = PriceSlab.objects.order_by('id').first())
                 Stage.objects.create(name="New Candidates",company=new_company)
                 Stage.objects.create(name="Onboarding",company=new_company)
                 # new_user.profile = Profile.objects.get(codename__exact='recruiter')
@@ -568,7 +568,7 @@ def team_space(request):
         context['form_invite'] = MemberInviteForm(data = request.POST)
         if context['form_invite'].is_valid():
             invitation = context['form_invite'].save()
-            invitation.token = invite_hash.encode(invitation.id)
+            invitation.token = secrets.token_urlsafe(32)
             invitation.invited_by = request.user
             invitation.membership = int(request.POST.get('membershipoptions',1))
             invitation.save()
@@ -981,7 +981,7 @@ def vacancies_summary(request, vacancy_status_name=None):
             form_invite = MemberInviteForm(data = request.POST)
             if form_invite.is_valid():
                 invitation = form_invite.save()
-                invitation.token = invite_hash.encode(invitation.id)
+                invitation.token = secrets.token_urlsafe(32)
                 invitation.invited_by = request.user
                 invitation.membership = int(request.POST.get('membershipoptions',1))
                 invitation.save()
@@ -1053,6 +1053,7 @@ def vacancies_summary(request, vacancy_status_name=None):
                                 'first_time': first_time,
                                 'service_categories': service_categories,
                             })
+@login_required
 def upload_vacancy_file(request):
     """
     Handle AJAX file upload for vacancy files, validate and save the file(s).
@@ -1078,7 +1079,7 @@ def upload_vacancy_file(request):
                     vacancy_id = request.POST.get('vacancy_id')
                     vacancy = None
                     if vacancy_id and int(vacancy_id) > 0:
-                        vacancy = get_object_or_404(Vacancy, pk=vacancy_id)
+                        vacancy = get_object_or_404(Vacancy, pk=vacancy_id, company__in=request.user.recruiter.company.all())
                     # Save the file, using the method of the known form, which have overwritten
                     object = fileForm.save(vacancy=vacancy, random_number=request.session.get('random_number'))
                     if vacancy:
@@ -1117,7 +1118,8 @@ def delete_vacancy_file(request):
     # FUNCION AJAX
     # Function to delete a file in realtime with AJAX to create/modify vacancy
     try:
-        object = Vacancy_Files.objects.get(pk=request.POST.get('id'))
+        owned = Q(vacancy__company__in=request.user.recruiter.company.all()) | Q(vacancy__isnull=True, random_number=request.session.get('random_number'))
+        object = Vacancy_Files.objects.get(owned, pk=request.POST.get('id'))
         object.delete()
         response = JSONResponse(True, mimetype=response_mimetype(request))
         response['Content-Disposition'] = 'inline; filename=files.json'
@@ -1246,7 +1248,6 @@ def add_update_vacancy(request, vacancy_id=False):
                 fileForm.validate_number_files(uploaded_files)
 
             if vacancy_form.is_valid() and fileForm.is_valid():
-                import pdb 
                 # pdb.set_trace()
                 publish_now = True
                 unpub_date = None
@@ -2003,7 +2004,7 @@ def billing(request):
     try:
         subscription = company.subscription
     except:
-        Subscription.objects.create(company = company,price_slab = PriceSlab.objects.get(id=2))
+        Subscription.objects.create(company = company,price_slab = PriceSlab.objects.order_by('id').first())
         company.refresh_from_db()
     current_slab = company.subscription.price_slab
     client_token = None

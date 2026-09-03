@@ -4,86 +4,85 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spotaxis"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "SpotAxis applicant tracking system"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "autodoc>=0.5.0",
-    "beautifulsoup4>=4.13.4",
-    "datefinder>=0.7.3",
-    "dicttoxml>=1.7.16",
-    "django>=5.2.1",
-    "django-bootstrap-form>=3.4",
-    "django-contrib-comments>=2.2.0",
-    "django-crontab>=0.7.1",
+    # Framework and runtime
+    "django>=5.2.1,<5.3",
+    "dj-database-url>=2.3",
+    "psycopg[binary]>=3.2",
+    "python-dotenv>=1.1",
+    "whitenoise>=6.9",
+    "gunicorn>=23.0",
+    "argon2-cffi>=23.1",
+    "sentry-sdk[django]>=2.29",
+    # Django add-ons still used by the existing apps
     "django-extensions>=4.1",
-    "django-filter>=25.1",
-    "django-mptt>=0.17.0",
     "django-nested-formset>=0.1.4",
     "django-phonenumber-field>=8.1.0",
-    "django-rosetta>=0.10.2",
-    "django-tagging>=0.5.0",
-    "django-xmlrpc>=0.1.8",
-    "djangorestframework>=3.16.0",
-    "docutils>=0.21.2",
-    "dotenv>=0.9.9",
-    "email-reply-parser>=0.5.12",
-    "hashids>=1.3.1",
-    "ipgetter2>=1.1.10",
-    "mammoth>=1.9.1",
-    "markdown>=3.8",
-    "markdownify>=1.1.0",
-    "mots-vides>=2015.5.11",
-    "nltk>=3.9.1",
-    "oauth2>=1.9.0.post1",
-    "pandas>=2.2.3",
-    "paypalrestsdk>=1.13.3",
-    "pdfminer-six>=20250506",
     "phonenumbers>=9.0.7",
-    "pillow>=11.2.1",
-    "pymysql>=1.1.1",
-    "pypdf>=5.5.0",
-    "pyth>=0.6.0",
-    "python-dateutil>=2.9.0.post0",
-    "python-docx>=1.1.2",
-    "python-linkedin>=4.1",
-    "requests>=2.32.3",
-    "requests-oauthlib>=2.0.0",
-    "rosetta>=0.3",
-    "scipy>=1.15.3",
-    "selenium>=4.33.0",
-    "setuptools>=80.9.0",
-    "six>=1.17.0",
-    "south>=1.0.2",
-    "stop-words>=2018.7.23",
-    "striprtf>=0.0.29",
-    "textile>=4.0.3",
-    "unidecode>=1.4.0",
     "validate-email>=1.3",
+    "hashids>=1.3.1",
+    "six>=1.17.0",
+    # Files, documents and parsing
+    "pillow>=11.2.1",
     "weasyprint>=65.1",
-    "xvfbwrapper>=0.2.13",
+    "pdfminer-six>=20250506",
+    "pypdf>=5.5.0",
+    "python-docx>=1.1.2",
+    "mammoth>=1.9.1",
+    "striprtf>=0.0.29",
+    "beautifulsoup4>=4.13.4",
+    "unidecode>=1.4.0",
+    "dicttoxml>=1.7.16",
+    "datefinder>=0.7.3",
+    "python-dateutil>=2.9.0.post0",
+    "requests>=2.32.3",
+    "nh3>=0.2.21",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11",
+    "pytest>=8.3",
+    "pytest-django>=4.11",
+    "pre-commit>=4.2",
 ]
 
 [tool.setuptools]
 packages = [
     "TRM",
+    "core",
     "activities",
     "candidates",
     "ckeditor",
     "common",
     "companies",
     "customField",
-    "el_pagination",
-    "example",
-    "helpdesk",
-    "locale",
     "payments",
     "resume_parser",
     "scheduler",
-    "socialmultishare",
-    "ssl",
     "upload_logos",
-    "zinnia",
-    "vacancies"
+    "vacancies",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "TRM.settings"
+python_files = ["test_*.py", "tests.py"]
+testpaths = ["core", "common", "companies", "candidates", "vacancies", "activities", "customField", "scheduler", "payments"]
+addopts = "--reuse-db -p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations", "TRM/static", ".venv"]
+
+[tool.ruff.lint]
+# Start with a deliberately small, high-signal rule set; the legacy code has
+# thousands of style issues that are not worth a big-bang reformat.
+select = ["E9", "F63", "F7", "F82", "F401", "F811", "B008", "S102", "S307"]
+ignore = []
+per-file-ignores = { "**/__init__.py" = ["F401"], "TRM/settings.py" = ["F401"] }

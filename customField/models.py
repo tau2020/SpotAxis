@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 from companies.models import Company
-from customField.settings import ALLOWED_FORM_FIELDS, TEMPLATE_MANAGER, ALLOWED_FORM_WIDGETS
+from customField.settings import ALLOWED_FORM_FIELDS, ALLOWED_FORM_WIDGETS
 from django.db import models
 from django.template.loader import render_to_string
 

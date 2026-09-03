@@ -18,7 +18,6 @@ Classes:
 
 from django.contrib import admin
 from django.contrib.auth.models import Group
-from django.contrib.sites.models import Site
 from common.models import Profile, User, AccountVerification, EmailVerification, Employment_Type, Country,\
     Address, Degree, Marital_Status, Gender, Subdomain, SocialAuth
 

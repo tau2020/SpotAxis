@@ -234,3 +234,9 @@ filecontent.txt
 
 venv/
 /.env
+# Build artefacts
+/staticfiles/
+/media/
+
+/.env.*
+!/.env.example

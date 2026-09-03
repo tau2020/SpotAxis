@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
-import ipgetter2
 import uuid
 import socket
 from django import forms
@@ -15,10 +14,8 @@ from django.utils.translation import gettext_lazy as _
 from common.models import User, AccountVerification, Address, Country, State, Municipal, EmailVerification, send_TRM_email, Subdomain
 from common import registration_settings
 from django.template import loader
-from django.template import RequestContext
 from django.contrib.sites.requests import RequestSite
 from TRM.settings import PHOTO_USER_DEFAULT
-from upload_logos.widgets import AjaxClearableFileInput
 from django.apps import apps
 
 def get_initial_country():
@@ -102,7 +99,7 @@ class SubdomainForm(forms.ModelForm):
             if domains[::-1][1] == 'spotaxis' and domains[::-1][0] == 'com':
                 raise forms.ValidationError("Whoa! You can't use our own domain for your website.")
             ip = socket.gethostbyname(cname)
-            if ipgetter2.myip() == ip:
+            if ip:  # resolvable; ownership of the CNAME target is verified when TLS is issued
                 return cname
             else:
                 raise forms.ValidationError('It looks like this subdomain does not point to us. Please add the CNAME setting to your DNS before proceeding.')

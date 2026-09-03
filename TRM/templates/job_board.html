@@ -1,7 +1,6 @@
 {% extends 'base/base.html' %}
 {% load humanize %}
 {% load TRM_tags %}
-{% load el_pagination_tags %}
 {% block css %}
       <link href="{{STATIC_URL}}daterange/daterangepicker.css" rel="stylesheet">
       <link href="{{STATIC_URL}}slider/bootstrap-slider.css" rel="stylesheet">
@@ -100,7 +99,6 @@
       <script type="text/javascript" src="{{STATIC_URL}}daterange/moment.js"></script>
       <script type="text/javascript" src="{{STATIC_URL}}daterange/daterangepicker.js"></script>
       <script type="text/javascript" src="{{STATIC_URL}}slider/bootstrap-slider.js"></script>
-	  <script src="{{ STATIC_URL }}el-pagination/js/el-pagination.js"></script>
 {% endblock %}
 {% block java_script_code %}
 	<script>
@@ -748,11 +746,12 @@
 		})
 	</script>
 	<script>
-        $.endlessPaginate({
-            paginateOnScroll: true,
-
-            paginateOnScrollMargin: 100,
-            paginateOnScrollChunkSize: 3
+        $(document).on('click', '.endless_more', function (e) {
+            e.preventDefault();
+            var $link = $(this);
+            $.get($link.attr('href'), function (html) {
+                $link.closest('.endless_more_wrap').replaceWith(html);
+            });
         });
     </script>
 {% endblock %}

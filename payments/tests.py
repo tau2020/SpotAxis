@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-from django.test import TestCase
 
 """
 Creating unit tests for the app.

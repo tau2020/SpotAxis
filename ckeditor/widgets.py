@@ -8,14 +8,12 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_str
-from django.utils.translation import gettext as _
 from django.utils.translation import get_language
 from django.core.exceptions import ImproperlyConfigured
 # from django.forms.util import flatatt
 from django.forms.utils import flatatt
 
 from django.utils.functional import Promise
-from django.utils.encoding import force_str
 from django.core.serializers.json import DjangoJSONEncoder
 
 class LazyEncoder(DjangoJSONEncoder):
@@ -39,7 +37,7 @@ class LazyEncoder(DjangoJSONEncoder):
             str or super().default: The serialized JSON string or the result of the parent default method.
         """
         if isinstance(obj, Promise):
-            return force_text(obj)
+            return force_str(obj)
         return super(LazyEncoder, self).default(obj)
 
 

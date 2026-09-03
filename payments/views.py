@@ -1,15 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from django.conf import settings
-from django.shortcuts import render, redirect
-from django.template import RequestContext
+from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404
 from payments.models import *
 from companies.models import *
 from datetime import datetime, timedelta
-import paypalrestsdk
-import json
+try:
+    import paypalrestsdk
+except ImportError:  # billing is disabled until Phase 8
+    paypalrestsdk = None
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
 from decimal import Decimal
