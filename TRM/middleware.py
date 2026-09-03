@@ -58,7 +58,11 @@ class SubdomainMiddleware:
         if subdomain:
             set_urlconf(SUBDOMAIN_URLCONF)
             request.urlconf = SUBDOMAIN_URLCONF
-        elif fqdn != SITE_SUFFIX.strip('.').strip('/'):
+        # `fqdn` never carries the port, so strip one off SITE_SUFFIX before
+        # comparing. Locally SITE_SUFFIX has to include the runserver port
+        # (e.g. '.spotaxis.localhost:8010/') for the URLs built from it in
+        # companies/vacancies models to be reachable. No-op in production.
+        elif fqdn != SITE_SUFFIX.strip('.').strip('/').split(':')[0]:
             raise Http404()
 
         response = self.get_response(request)

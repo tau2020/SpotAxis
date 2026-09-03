@@ -8,7 +8,7 @@ from payments.models import Package, ServiceCategory
 from activities.models import Notification
 from django.utils.translation import gettext as _
 from TRM import settings
-from TRM.settings import LOGO_COMPANY_DEFAULT, LOGO_CANDIDATE_DEFAULT, ROOT_DOMAIN
+from TRM.settings import LOGO_COMPANY_DEFAULT, LOGO_CANDIDATE_DEFAULT, ROOT_DOMAIN, SITE_SUFFIX
 import json
 from django.db.models import Q
 # from zinnia import settings as zinnia_settings
@@ -93,7 +93,10 @@ def subdomain(request):
             hasCNAME = True
             active_host = subdomain.cname
         elif subdomain.slug:
-            active_host = subdomain.slug + '.' + ROOT_DOMAIN + '.com'
+            # Derived from SITE_SUFFIX so local hosts resolve too; this is
+            # byte-identical to the previous hardcoded '.<ROOT_DOMAIN>.com'
+            # when SITE_SUFFIX keeps its production default.
+            active_host = subdomain.slug + SITE_SUFFIX.rstrip('/')
     else:
         slug=None
         active_host = None
