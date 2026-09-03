@@ -1,6 +1,6 @@
-# SpotAxis
+# Nimbus Hire
 
-SpotAxis is an open-source (MIT licensed) Applicant Tracking System: organizations post jobs on a hosted careers site, candidates apply, and hiring teams move applicants through a pipeline with notes, ratings, interviews and notifications.
+Nimbus Hire is an Applicant Tracking System built on the open-source (MIT licensed) SpotAxis codebase: organizations post jobs on a hosted careers site, candidates apply, and hiring teams move applicants through a pipeline with notes, ratings, interviews and notifications.
 
 The project is being reworked into a lean, low-cost SaaS MVP. The assessment, target architecture, migration plan and roadmap are in [`docs/MVP_ARCHITECTURE_PLAN.md`](docs/MVP_ARCHITECTURE_PLAN.md).
 
