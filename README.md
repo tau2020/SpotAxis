@@ -20,7 +20,7 @@ cp .env.example .env            # then set SECRET_KEY
 uv sync --group dev
 createdb spotaxis
 uv run python manage.py migrate
-PATH="$PWD/.venv/bin:$PATH" bash loaddata_from_apps.sh
+uv run python manage.py seed_reference_data
 uv run python manage.py runserver 8010
 ```
 

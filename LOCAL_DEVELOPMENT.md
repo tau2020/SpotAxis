@@ -49,7 +49,7 @@ No `/etc/hosts` edit is needed: macOS and Linux resolve `*.localhost` to 127.0.0
 uv sync --group dev                      # creates .venv with app + dev dependencies
 createdb spotaxis                        # or use the Docker container above
 uv run python manage.py migrate
-PATH="$PWD/.venv/bin:$PATH" bash loaddata_from_apps.sh   # countries, currencies, degrees, plans, ...
+uv run python manage.py seed_reference_data   # countries, currencies, degrees, plans, ...
 uv run python manage.py createsuperuser
 ```
 
@@ -101,7 +101,7 @@ docker run --rm -p 8000:8000 -e DATABASE_URL=postgres://host.docker.internal:543
   -e SECRET_KEY=dev -e DEBUG=true -e SITE_SUFFIX=.spotaxis.localhost:8000/ spotaxis
 ```
 
-The image runs migrations on start and serves with gunicorn; static files are collected at build time and served by WhiteNoise.
+The image runs migrations and the reference-data seed on start and serves with gunicorn; static files are collected at build time and served by WhiteNoise.
 
 ## 8. Known limitations (pre-existing)
 
