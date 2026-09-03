@@ -1,133 +1,135 @@
-# -*- coding: utf-8 -*-
+"""Django settings for SpotAxis.
 
-from __future__ import absolute_import
+All environment-specific values come from environment variables (a local
+``.env`` file is loaded for development). See ``.env.example`` for the full
+list. Nothing in this file should ever need to change between environments.
+"""
 import os
+from pathlib import Path
+
+import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
-import paypalrestsdk
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_PATH = str(BASE_DIR / 'TRM')  # legacy alias used by a few modules
 
+load_dotenv(BASE_DIR / '.env')
+
+
+def env(name, default=None):
+    value = os.getenv(name)
+    return default if value is None or value == '' else value
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None or value == '':
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def env_list(name, default=''):
+    return [item.strip() for item in (os.getenv(name) or default).split(',') if item.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Core
+# ---------------------------------------------------------------------------
 PROJECT_NAME = 'SpotAxis'
-PROJECT_PATH = os.path.dirname(os.path.realpath(__file__))
+ENVIRONMENT = env('ENVIRONMENT', 'local_development')
+DEBUG = env_bool('DEBUG', ENVIRONMENT in ('local_development', 'server_development'))
 
-ADMINS = (('Saket', 'saket@spotaxis.com'), ('Holesh', 'holesh@spotaxis.com'))
+SECRET_KEY = env('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'insecure-development-key-do-not-use-in-production'
+    else:
+        raise ImproperlyConfigured('SECRET_KEY environment variable must be set when DEBUG is off.')
+
+ON_RAILWAY = bool(os.getenv('RAILWAY_ENVIRONMENT'))
+
+ADMINS = [tuple(item.split(':', 1)) for item in env_list('ADMINS') if ':' in item]
 MANAGERS = ADMINS
 
-ENVIRONMENT = os.getenv('ENVIRONMENT')
-
-DEBUG = ENVIRONMENT in ['local_development', 'server_development']
-
-#ALLOWED_HOSTS = os.getenv('allowed_hosts')
-ALLOWED_HOSTS = ['*']
-SESSION_COOKIE_DOMAIN = os.getenv('session_cookie_domain')
-TIME_ZONE = os.getenv('TIME_ZONE', 'Asia/Kolkata')
-LANGUAGE_CODE = 'en-IN'
+TIME_ZONE = env('TIME_ZONE', 'UTC')
+LANGUAGE_CODE = env('LANGUAGE_CODE', 'en')
+LANGUAGES = (('en', 'English'),)
 SITE_ID = 1
 USE_I18N = True
-USE_L10N = True
 USE_TZ = True
-
-if ENVIRONMENT == 'local_development':
-    HOSTED_URL = "http://spotaxis.com"
-    ROOT_DOMAIN = "spotaxis"
-elif ENVIRONMENT == 'server_development':
-    HOSTED_URL = "http://demo.spotaxis.com"
-    ROOT_DOMAIN = "demo.spotaxis"
-elif ENVIRONMENT == 'productive':
-    HOSTED_URL = "https://spotaxis.com"
-    ROOT_DOMAIN = "spotaxis"
-else:
-    HOSTED_URL = "http://spotaxis.com"
-    ROOT_DOMAIN = "spotaxis"
-
-gettext = lambda s: s
-LANGUAGES = (('en', gettext('English')),) 
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ---------------------------------------------------------------------------
+# Hosts and URLs
+# ---------------------------------------------------------------------------
+# SITE_SUFFIX is the suffix appended to a company slug to build its careers
+# site host, e.g. ".spotaxis.com/" -> "acme.spotaxis.com". The host part of
+# SITE_SUFFIX (without the leading dot and trailing slash) is the main site.
+SITE_SUFFIX = env('SITE_SUFFIX', env('site_suffix', '.spotaxis.localhost:8010/' if DEBUG else '.spotaxis.com/'))
+MAIN_HOST = SITE_SUFFIX.strip('/').lstrip('.')
+ROOT_DOMAIN = env('ROOT_DOMAIN', MAIN_HOST.split(':')[0].split('.')[0])
+PROTOCOL = env('PROTOCOL', 'http' if DEBUG else 'https')
+SITE_URL = env('SITE_URL', env('site_url', f'{PROTOCOL}://{MAIN_HOST}'))
+HOSTED_URL = env('HOSTED_URL', SITE_URL)
 
-STATIC_URL = '/static/'
-STATICFILES_FINDERS = [
-    'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-]
+# Extra hosts (besides MAIN_HOST) that should serve the main site, e.g. the
+# platform-provided domain on Railway before a custom domain is attached.
+MAIN_HOSTS = {MAIN_HOST.split(':')[0]} | set(env_list('MAIN_HOSTS'))
+if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+    MAIN_HOSTS.add(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
 
-# Make this unique, and don't share it with anybody.
-SECRET_KEY = os.getenv('SECRET_KEY')
+_default_allowed = '.spotaxis.localhost,localhost,127.0.0.1' if DEBUG else ''
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', _default_allowed) + sorted(MAIN_HOSTS)
+if MAIN_HOST.split(':')[0] not in ('localhost', '127.0.0.1'):
+    # Allow every company subdomain of the main host.
+    ALLOWED_HOSTS.append('.' + MAIN_HOST.split(':')[0])
+if ON_RAILWAY:
+    ALLOWED_HOSTS.append('healthcheck.railway.app')
+ALLOWED_HOSTS = sorted(set(ALLOWED_HOSTS))
 
-# Change the defautl Serialization in Django 1.6 form Json to Pickle
-#SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
-SESSION_SERIALIZER = 'django.contrib.sessions.serializers.JSONSerializer'
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+if not CSRF_TRUSTED_ORIGINS:
+    _bare_main = MAIN_HOST.split(':')[0]
+    CSRF_TRUSTED_ORIGINS = [f'{PROTOCOL}://{host}' for host in sorted(MAIN_HOSTS)]
+    CSRF_TRUSTED_ORIGINS.append(f'{PROTOCOL}://*.{_bare_main}')
+    if DEBUG and ':' in MAIN_HOST:
+        CSRF_TRUSTED_ORIGINS.append(f'{PROTOCOL}://{MAIN_HOST}')
+        CSRF_TRUSTED_ORIGINS.append(f'{PROTOCOL}://*.{MAIN_HOST}')
 
 ROOT_URLCONF = 'TRM.urls'
 SUBDOMAIN_URLCONF = 'TRM.subdomain_urls'
-SUPPORT_URLCONF = 'TRM.support_urls'
-BLOG_URLCONF = 'TRM.blog_urls'
 WSGI_APPLICATION = 'TRM.wsgi.application'
 
-AUTH_USER_MODEL = 'common.User'
-LOGIN_URL = '/login/'
-LOGIN_ERROR_URL = '/login/'
-LOGIN_REDIRECT_URL = 'common_redirect_after_login'
-SOCIAL_AUTH_BACKEND_ERROR_URL = '/login/'
-SOCIAL_AUTH_LOGIN_ERROR_URL = '/login/'
-
-PHOTO_USER_DEFAULT = "logos_TRM/logo_TRM_user_default.png"
-LOGO_CANDIDATE_DEFAULT = "logos_TRM/logo_TRM_user_default.png"
-LOGO_COMPANY_DEFAULT = "logos_TRM/logo_TRM_company_default.png"
-
-DEFAULT_SITE_TEMPLATE = 1
-number_objects_page = 20
-num_pages = 8
-
-days_default_search = 30
-
+# ---------------------------------------------------------------------------
+# Applications
+# ---------------------------------------------------------------------------
 INSTALLED_APPS = (
-'django.contrib.auth',
+    'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Uncomment the next line to enable the admin:
     'django.contrib.admin',
-    # Uncomment the next line to enable admin documentation:
-    'django.contrib.admindocs',
     'django.contrib.humanize',
+    'core',
     'companies',
     'candidates',
-    'rosetta',
     'common',
     'vacancies',
     'activities',
-    'pytz',
-    'weasyprint',
     'upload_logos',
     'ckeditor',
     'payments',
-    'django_crontab',
-    'django_extensions',
-    'markdownify',
-    'bootstrapform',
-    # 'helpdesk',
-    'django_comments',
-    'mptt',
-    'tagging',
-    # 'zinnia',
-    'el_pagination',
     'scheduler',
     'customField',
-    'rest_framework',
+    'django_extensions',
 )
-
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # 'TRM.middleware.CrossDomainSessionMiddleware',
-    #'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -135,7 +137,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'TRM.middleware.SubdomainMiddleware',
-    'TRM.middleware.ExpiredPlanMiddleware',
     'TRM.middleware.MediumMiddleware',
 ]
 
@@ -161,96 +162,152 @@ TEMPLATES = [
                 'TRM.context_processors.logo_company_default',
                 'TRM.context_processors.subdomain',
                 'TRM.context_processors.notifications',
-                'TRM.context_processors.packages',
             ],
         },
     },
 ]
 
-CRONJOBS = [
-    ('* * * * *', 'payments.cron.SubscriptionCronJob', f'>> {PROJECT_PATH}/cronjob.log'),
-    ('0 0 * * *', 'vacancies.cron.PublishCronJob', f'>> {PROJECT_PATH}/cronjob.log'),
-    ('0 0 * * *', 'vacancies.cron.UnPublishCronJob', f'>> {PROJECT_PATH}/cronjob.log'),
-]
-
-REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
-}
-
-AUTHENTICATION_BACKENDS = (
-    'django.contrib.auth.backends.ModelBackend',
-)
-
-SOCIAL_AUTH_PIPELINE = (
-    'common.views.save_candidate_social_data',
-)
-
-# OAuth configuration keys
-SOCIAL_AUTH_KEYS = {
-    'FACEBOOK_KEY': os.getenv('facebook_oauth_key'),
-    'FACEBOOK_SECRET': os.getenv('facebook_oauth_secret'),
-    'LINKEDIN_KEY': os.getenv('linkedin_oauth_key'),
-    'LINKEDIN_SECRET': os.getenv('linkedin_oauth_secret'),
-    'ANGEL_KEY': os.getenv('angel_oauth_key'),
-    'ANGEL_SECRET': os.getenv('angel_oauth_secret'),
-    'TWITTER_KEY': os.getenv('twitter_oauth_key'),
-    'TWITTER_SECRET': os.getenv('twitter_oauth_secret'),
-    'GOOGLEPLUS_KEY': os.getenv('googleplus_oauth_key'),
-    'GOOGLEPLUS_SECRET': os.getenv('googleplus_oauth_secret'),
-    'GITHUB_KEY': os.getenv('github_oauth_key'),
-    'GITHUB_SECRET': os.getenv('github_oauth_secret'),
-    'STACKOVERFLOW_KEY': os.getenv('stackoverflow_oauth_key'),
-    'STACKOVERFLOW_SECRET': os.getenv('stackoverflow_oauth_secret'),
-    'STACKOVERFLOW_REQUESTKEY': os.getenv('stackoverflow_oauth_requestkey'),
-}
-
-# PayPal SDK Setup
-PAYPAL_CLIENT_ID = os.getenv('paypal_client_id')
-PAYPAL_APP_SECRET = os.getenv('paypal_app_secret')
-paypalrestsdk.configure({
-    'mode': 'live' if ENVIRONMENT == 'productive' else 'sandbox',
-    'client_id': PAYPAL_CLIENT_ID,
-    'client_secret': PAYPAL_APP_SECRET,
-})
-
-# Email Settings
-EMAIL_BACKEND = os.getenv('email_backend')
-EMAIL_HOST = os.getenv('email_host')
-EMAIL_PORT = os.getenv('email_port')
-EMAIL_HOST_USER = os.getenv('email_host_user')
-EMAIL_HOST_PASSWORD = os.getenv('email_host_passw')
-EMAIL_USE_TLS = os.getenv('email_use_tls')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-SERVER_EMAIL = os.getenv('server_email')
-
-# Database Config
+# ---------------------------------------------------------------------------
+# Database (DATABASE_URL, e.g. postgres://user:pass@host:5432/dbname)
+# ---------------------------------------------------------------------------
 DATABASES = {
-    'default': {
-        'ENGINE': os.getenv('db_engine'),
-        'NAME': os.getenv('db_name'),
-        'USER': os.getenv('db_user'),
-        'PASSWORD': os.getenv('db_password'),
-        'HOST': os.getenv('db_host'),
-        'PORT': os.getenv('db_port') or os.getenv('db_host'),
-    }
+    'default': dj_database_url.config(
+        default='postgres://localhost:5432/spotaxis',
+        conn_max_age=int(env('DB_CONN_MAX_AGE', '600')),
+        conn_health_checks=True,
+    )
 }
 
-# Media & Static Files
-MEDIA_ROOT = os.getenv('media_root', os.path.join(PROJECT_PATH, 'media'))
-MEDIA_URL = os.getenv('media_url', 'http://spotaxis.com/media/')
-STATIC_ROOT = os.getenv('static_root', '')
-STATICFILES_DIRS = [
-    os.getenv('static_dir') or os.path.join(PROJECT_PATH, 'static')
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+AUTH_USER_MODEL = 'common.User'
+AUTHENTICATION_BACKENDS = ('django.contrib.auth.backends.ModelBackend',)
+LOGIN_URL = '/login/'
+LOGIN_ERROR_URL = '/login/'
+LOGIN_REDIRECT_URL = 'common_redirect_after_login'
+SESSION_SERIALIZER = 'django.contrib.sessions.serializers.JSONSerializer'
+SESSION_COOKIE_DOMAIN = env('SESSION_COOKIE_DOMAIN', env('session_cookie_domain'))
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # a few legacy templates read the cookie from JS
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+]
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
 ]
 
-# Site URL
-PROTOCOL = 'https' if ENVIRONMENT == 'productive' else 'http'
-SITE_URL = os.getenv('site_url', f"{PROTOCOL}://spotaxis.com")
-SITE_SUFFIX = os.getenv('site_suffix', '.spotaxis.com/')
-
-logo_email = os.getenv('logo_email')
-NOTIFICATION_EMAILS = os.getenv('notification_emails')
-CKEDITOR_UPLOAD_PATH = "uploads/"
+# ---------------------------------------------------------------------------
+# Transport security (only when serving over HTTPS behind a proxy)
+# ---------------------------------------------------------------------------
 X_FRAME_OPTIONS = 'SAMEORIGIN'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', True)
+    SECURE_REDIRECT_EXEMPT = [r'^healthz/?$']
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(env('SECURE_HSTS_SECONDS', '3600'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+    SECURE_HSTS_PRELOAD = False
+
+# ---------------------------------------------------------------------------
+# Static and media files
+# ---------------------------------------------------------------------------
+STATIC_URL = '/static/'
+STATIC_ROOT = env('STATIC_ROOT', str(BASE_DIR / 'staticfiles'))
+STATICFILES_DIRS = [os.path.join(PROJECT_PATH, 'static')]
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
+WHITENOISE_MAX_AGE = 60 * 60 * 24 * 30
+WHITENOISE_USE_FINDERS = DEBUG  # serve from app static dirs without collectstatic in development
+
+MEDIA_ROOT = env('MEDIA_ROOT', env('media_root', str(BASE_DIR / 'media')))
+MEDIA_URL = env('MEDIA_URL', env('media_url', '/media/'))
+# Serve uploaded files through Django. Fine for development and for the
+# ephemeral staging disk; object storage replaces this in Phase 1.
+SERVE_MEDIA = env_bool('SERVE_MEDIA', True)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+
+PHOTO_USER_DEFAULT = 'logos_TRM/logo_TRM_user_default.png'
+LOGO_CANDIDATE_DEFAULT = 'logos_TRM/logo_TRM_user_default.png'
+LOGO_COMPANY_DEFAULT = 'logos_TRM/logo_TRM_company_default.png'
+DEFAULT_SITE_TEMPLATE = 1
+CKEDITOR_UPLOAD_PATH = 'uploads/'
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    env('email_backend', 'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'),
+)
+EMAIL_HOST = env('EMAIL_HOST', env('email_host', 'localhost'))
+EMAIL_PORT = int(env('EMAIL_PORT', env('email_port', '587')))
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', env('email_host_user', ''))
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', env('email_host_passw', ''))
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', env_bool('email_use_tls', True))
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', env('default_from_email', f'{PROJECT_NAME} <noreply@{MAIN_HOST.split(":")[0]}>'))
+SERVER_EMAIL = env('SERVER_EMAIL', env('server_email', DEFAULT_FROM_EMAIL))
+NOTIFICATION_EMAILS = env('NOTIFICATION_EMAILS', env('notification_emails'))
+logo_email = env('LOGO_EMAIL', env('logo_email'))
+
+# ---------------------------------------------------------------------------
+# Legacy application settings still read by existing views
+# ---------------------------------------------------------------------------
+number_objects_page = 20
+num_pages = 8
+days_default_search = 30
+PAYPAL_CLIENT_ID = env('PAYPAL_CLIENT_ID')
+PAYPAL_APP_SECRET = env('PAYPAL_APP_SECRET')
+
+# ---------------------------------------------------------------------------
+# Scheduled tasks: POST /internal/tasks/run with this token to run due tasks
+# ---------------------------------------------------------------------------
+TASK_RUNNER_TOKEN = env('TASK_RUNNER_TOKEN')
+
+# ---------------------------------------------------------------------------
+# Logging and error reporting
+# ---------------------------------------------------------------------------
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'plain': {'format': '%(asctime)s %(levelname)s %(name)s %(message)s'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+    },
+    'root': {'handlers': ['console'], 'level': env('LOG_LEVEL', 'INFO')},
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
+    },
+}
+
+SENTRY_DSN = env('SENTRY_DSN')
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=ENVIRONMENT,
+        traces_sample_rate=float(env('SENTRY_TRACES_SAMPLE_RATE', '0.05')),
+        send_default_pii=False,
+    )

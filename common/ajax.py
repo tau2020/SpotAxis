@@ -79,20 +79,19 @@ from __future__ import print_function
 import json
 import traceback
 from activities.utils import *
-from candidates.forms import AcademicForm, CandidateForm, CvLanguageForm, ExpertiseForm, ObjectiveForm, cv_FileForm, \
-    TrainingForm, CertificateForm, ProjectForm, InterestsForm, HobbiesForm, ExtraCurricularsForm, OthersForm, CandidateContactForm
+from candidates.forms import AcademicForm, CandidateForm, CvLanguageForm, ExpertiseForm, ObjectiveForm, TrainingForm, CertificateForm, ProjectForm, InterestsForm, HobbiesForm, ExtraCurricularsForm, OthersForm, CandidateContactForm
 from candidates.models import Academic_Status, Candidate, Curriculum, Academic, Expertise, Training, Certificate, Project, CV_Language
 from common.forms import ContactForm
-from common.models import Degree, send_TRM_email, User, send_email_to_TRM, SocialAuth
+from common.models import Degree, send_TRM_email, send_email_to_TRM, SocialAuth
 from common.views import revoke_token
-from companies.models import Stage, Company, Subdomain, Recruiter, Ban, ExternalReferal
+from companies.models import Stage, Company, Recruiter, Ban, ExternalReferal
 from customField.forms import TemplateForm, FieldFormset, TemplatedForm
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
 from django.contrib.humanize.templatetags.humanize import naturaltime
-from django.contrib.messages import get_messages
 from django.core import serializers
 from django.urls import reverse
 from django.db.models import Q
@@ -100,22 +99,41 @@ from django.http import HttpResponse, Http404, JsonResponse
 from hashids import Hashids
 from payments.models import *
 from django.shortcuts import get_object_or_404, render
-from django.template import RequestContext, Context, TemplateDoesNotExist
+from django.template import Context, TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.utils.translation import gettext as _
 from django.utils.html import strip_tags
-from django.utils.translation import gettext as _
-from django.views.decorators.csrf import csrf_exempt
 from scheduler.models import Schedule
 from TRM.context_processors import subdomain
 from TRM.settings import ROOT_DOMAIN, STATIC_URL
-from urllib.parse import parse_qsl
 from utils import validate_code, posttofbprofile, posttofbgroup,posttofbpage, posttoliprofile, posttolicompany, posttotwitter
 from vacancies.forms import Public_FilesForm, diff_month
 from vacancies.models import Question, VacancyStage, Vacancy, Comment, Postulate_Stage, Postulate_Score
-from vacancies.models import Vacancy, Postulate, Salary_Type, Candidate_Fav , VacancyTags
-from validate_email import validate_email
+from vacancies.models import Postulate, Salary_Type, Candidate_Fav , VacancyTags
 from utils import is_ajax
+
+def _active_recruiter(request):
+    """Return the caller's active Recruiter row, or None."""
+    if not request.user.is_authenticated:
+        return None
+    return Recruiter.objects.filter(user=request.user, user__is_active=True).first()
+
+
+def _manager_company(request):
+    """(recruiter, company) when the caller manages a company, else (recruiter, None)."""
+    recruiter = _active_recruiter(request)
+    if recruiter is None or not recruiter.is_manager():
+        return recruiter, None
+    return recruiter, recruiter.company.all().first()
+
+
+def _admin_company(request):
+    """(recruiter, company) when the caller administers a company, else (recruiter, None)."""
+    recruiter = _active_recruiter(request)
+    if recruiter is None or not recruiter.is_admin():
+        return recruiter, None
+    return recruiter, recruiter.company.all().first()
+
 
 def filter_text_from_profile(arr=[], postulate_ids = [], public = False):
     """Filter candidate profiles based on text search criteria.
@@ -508,7 +526,6 @@ def ajax_login(request):
             context['success'] = True
     return JsonResponse(context)
 
-@csrf_exempt
 def add_stage(request):
     context={}
     context['success'] = False
@@ -527,7 +544,6 @@ def add_stage(request):
             context['id'] = stage.id
     return JsonResponse(context)
 
-@csrf_exempt
 def update_vacancy_stage(request):
     context={}
     context['success'] = False
@@ -621,7 +637,6 @@ def update_vacancy_stage(request):
                 context['msg'] = 'Please upgrade to avail this feature.'
     return JsonResponse(context)
 
-@csrf_exempt
 def upgrade_postulate(request):
     context={}
     formdata = json.loads(request.POST.get('formdata',''))
@@ -698,7 +713,6 @@ def upgrade_postulate(request):
                 messages.success(request,context['msg'])
     return JsonResponse(context)
 
-@csrf_exempt
 def downgrade_postulate(request):
     context={}
     formdata = json.loads(request.POST.get('formdata',''))
@@ -772,7 +786,6 @@ def downgrade_postulate(request):
                         messages.success(request, context['msg'])
     return JsonResponse(context)
 
-@csrf_exempt
 def archive_postulate(request):
     context={}
     formdata = json.loads(request.POST.get('formdata',''))
@@ -852,7 +865,6 @@ def archive_postulate(request):
                     messages.success(request,context['msg'])
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_personal_form(request):
     """Validate candidate's personal information form.
 
@@ -890,7 +902,6 @@ def validate_personal_form(request):
                 context['errors'] = form_candidate.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_contact_form(request):
     """Validate candidate's contact information form.
 
@@ -928,7 +939,6 @@ def validate_contact_form(request):
                 context['errors'] = form_candidate_contact.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_academic_form(request):
     context={}
     context['success'] = False
@@ -965,7 +975,6 @@ def validate_academic_form(request):
 
     raise Http404
 
-@csrf_exempt
 def validate_experience_form(request):
     context={}
     context['success'] = False
@@ -1000,7 +1009,6 @@ def validate_experience_form(request):
                 context['errors'] = form_expertise.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_training_form(request):
     context={}
     context['success'] = False
@@ -1035,7 +1043,6 @@ def validate_training_form(request):
                 context['errors'] = form_training.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_project_form(request):
     context={}
     context['success'] = False
@@ -1070,7 +1077,6 @@ def validate_project_form(request):
                 context['errors'] = form_project.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_certificate_form(request):
     context={}
     context['success'] = False
@@ -1105,7 +1111,6 @@ def validate_certificate_form(request):
                 context['errors'] = form_certificate.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_objective_form(request):
     context={}
     context['success'] = False
@@ -1132,7 +1137,6 @@ def validate_objective_form(request):
                 context['errors'] = form_objective.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_interests_form(request):
     context={}
     context['success'] = False
@@ -1161,7 +1165,6 @@ def validate_interests_form(request):
                 context['errors'] = form_interests.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_hobbies_form(request):
     context={}
     context['success'] = False
@@ -1188,7 +1191,6 @@ def validate_hobbies_form(request):
                 context['errors'] = form_hobbies.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_extra_curriculars_form(request):
     context={}
     context['success'] = False
@@ -1216,7 +1218,6 @@ def validate_extra_curriculars_form(request):
                 context['errors'] = form_extra_curriculars.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_others_form(request):
     context={}
     context['success'] = False
@@ -1243,7 +1244,6 @@ def validate_others_form(request):
                 context['errors'] = form_others.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def validate_language_form(request):
     context={}
     context['success'] = False
@@ -1280,7 +1280,6 @@ def validate_language_form(request):
                 context['errors'] = form_language.errors
     return JsonResponse(context)
 
-@csrf_exempt
 def delete_section(request):
     context = {}
     context['success'] = False
@@ -1328,7 +1327,6 @@ def delete_section(request):
         return JsonResponse(context)
     raise Http404
 
-@csrf_exempt
 def generate_public_cv(request):
     context={}
     # raise ValueError()
@@ -1430,7 +1428,6 @@ def generate_public_cv(request):
     return JsonResponse(context)
     # raise Http404
 
-@csrf_exempt
 def public_application(request):
     context = {}
     # raise ValueError()
@@ -1443,7 +1440,6 @@ def public_application(request):
             context['success'] = True
     return JsonResponse(context)
 
-@csrf_exempt
 def public_contact_form(request):
     context={}
     context['success'] = False
@@ -1457,22 +1453,24 @@ def public_contact_form(request):
             context['errors'] = form.errors
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def update_permissions(request):
-    """Update user permissions for a company or job.
-
-    Args:
-        request: HTTP request containing permission updates
-
-    Returns:
-        HttpResponse: Success or error message
-    """
+    """Change a team member's role. Company admins only; scoped to their company."""
     context={}
     context['success'] = False
     if request.method == 'POST':
+        actor, company = _admin_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
         id = request.POST.get('id',None)
         perm = request.POST.get('perm', 1)
-        member = Recruiter.objects.filter(id=id, user__is_active=True)
+        try:
+            perm = int(perm)
+        except (TypeError, ValueError):
+            return JsonResponse(context, status=400)
+        if perm not in (1, 2, 3):
+            return JsonResponse(context, status=400)
+        member = Recruiter.objects.filter(id=id, user__is_active=True, company=company).exclude(user=request.user)
         if member:
             member = member[0]
             if not member.is_owner():
@@ -1498,16 +1496,24 @@ def update_permissions(request):
             else:
                 context['msg'] = 'Permissions for this member cannot be updated'
         else:
-            data['msg'] = "Member was not found"
+            context['msg'] = "Member was not found"
+            return JsonResponse(context, status=404)
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def remove_member(request):
+    """Deactivate a team member. Company admins only; cannot remove the owner or yourself."""
     context={}
     context['success']=False
     if request.method=='POST':
+        actor, company = _admin_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
         id = request.POST.get('id',None)
-        member = Recruiter.objects.filter(id=id, user__is_active=True)
+        member = Recruiter.objects.filter(id=id, user__is_active=True, company=company).exclude(user=request.user)
+        if member and member[0].is_owner():
+            context['msg'] = 'The owner cannot be removed'
+            return JsonResponse(context, status=403)
         if member:
             member=member[0]
             email = member.user.email
@@ -1527,16 +1533,18 @@ def remove_member(request):
             context['msg'] = 'Member Removed'
         else:
             context['msg'] = 'Member was not found'
+            return JsonResponse(context, status=404)
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def change_ownership(request):
+    """Transfer company ownership to another member of the same company."""
     context={}
     context['success']=False
     if request.method=='POST':
         id = request.POST.get('id',None)
-        member = Recruiter.objects.filter(id=id, user__is_active=True)
         company = Company.objects.filter(user = request.user)
+        member = Recruiter.objects.filter(id=id, user__is_active=True, company__in=company).exclude(user=request.user)
         if member and company:
             member=member[0]
             company = company[0]
@@ -1553,16 +1561,20 @@ def change_ownership(request):
             context['data'] = None
         else:
             context['msg'] = 'Member was not found'
+            return JsonResponse(context, status=404)
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def add_member_to_job(request):
+    """Company managers only; member and job must belong to the caller's company."""
     context={}
     context['success'] = False
     if request.method == 'POST':
-        member = Recruiter.objects.get(id = request.POST.get('id',0))
-        vacancy = Vacancy.objects.get(id = request.POST.get('vid',0))
-        recruiter = Recruiter.objects.get(user=request.user)
+        recruiter, company = _manager_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
+        member = get_object_or_404(Recruiter, id=request.POST.get('id',0), company=company)
+        vacancy = get_object_or_404(Vacancy, id=request.POST.get('vid',0), company=company)
         if recruiter and recruiter.is_manager():
             vacancy.recruiters.add(member)
             # for stage in vacancy.vacancystage_set.all():
@@ -1594,14 +1606,17 @@ def add_member_to_job(request):
             context['msg'] = 'You are not authorised to make these changes. Please contact your Admin to become Hiring Process Manager.'
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def remove_member_from_job(request):
+    """Company managers only; member and job must belong to the caller's company."""
     context={}
     context['success'] = False
     if request.method == 'POST':
-        member = Recruiter.objects.get(id=request.POST.get('id',0))
-        vacancy = Vacancy.objects.get(id = request.POST.get('vid',0))
-        recruiter = Recruiter.objects.get(user=request.user)
+        recruiter, company = _manager_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
+        member = get_object_or_404(Recruiter, id=request.POST.get('id',0), company=company)
+        vacancy = get_object_or_404(Vacancy, id=request.POST.get('vid',0), company=company)
         if recruiter and recruiter.is_manager():
             vacancy.recruiters.remove(member)
             for stage in vacancy.vacancystage_set.all():
@@ -1633,14 +1648,17 @@ def remove_member_from_job(request):
             context['msg'] = 'You are not authorised to make these changes. Please contact your Admin to become Hiring Process Manager.'
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def add_member_to_job_process(request):
+    """Company managers only; member and job must belong to the caller's company."""
     context={}
     context['success'] = False
-    if request.method=='POST':
-        member = Recruiter.objects.get(id = request.POST.get('id',0))
-        vacancy_stage = VacancyStage.objects.get(id = request.POST.get('vid',0))
-        recruiter = Recruiter.objects.get(user = request.user)
+    if request.method == 'POST':
+        recruiter, company = _manager_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
+        member = get_object_or_404(Recruiter, id=request.POST.get('id',0), company=company)
+        vacancy_stage = get_object_or_404(VacancyStage, id=request.POST.get('vid',0), vacancy__company=company)
         if recruiter and recruiter.is_manager():
             vacancy_stage.recruiters.add(member)
             vacancy_stage.save()
@@ -1678,14 +1696,17 @@ def add_member_to_job_process(request):
             context['msg'] = 'You are not authorised to make these changes. Please contact your Admin to become Hiring Process Manager.'
     return JsonResponse(context)
 
-@csrf_exempt
+@login_required
 def remove_member_from_job_process(request):
+    """Company managers only; member and job must belong to the caller's company."""
     context={}
     context['success'] = False
     if request.method == 'POST':
-        member = Recruiter.objects.get(id=request.POST.get('id',0))
-        vacancy_stage = VacancyStage.objects.get(id = request.POST.get('vid',0))
-        recruiter = Recruiter.objects.get(user=request.user)
+        recruiter, company = _manager_company(request)
+        if company is None:
+            return JsonResponse(context, status=403)
+        member = get_object_or_404(Recruiter, id=request.POST.get('id',0), company=company)
+        vacancy_stage = get_object_or_404(VacancyStage, id=request.POST.get('vid',0), vacancy__company=company)
         if recruiter and recruiter.is_manager():
             vacancy_stage.recruiters.remove(member)
             vacancy_stage.save()
@@ -1720,7 +1741,6 @@ def remove_member_from_job_process(request):
             context['msg'] = 'You are not authorised to make these changes. Please contact your Admin to become Hiring Process Manager.'
     return JsonResponse(context)
 
-@csrf_exempt
 def update_criteria(request):
     context={}
     context['success'] = False
@@ -1752,7 +1772,6 @@ def update_criteria(request):
             context['msg'] = 'You are not authorised to make these changes. Please contact your Admin to become Hiring Process Manager.'
     return JsonResponse(context)
 
-@csrf_exempt
 def comment(request):
     context={}
     context['success'] = False
@@ -1842,11 +1861,7 @@ def comment(request):
         # context['html'] = """<div class="row bg-white no-margin border-bottom border-light pl20 pr20 comment"><div class="col-xs-12 pt5 pb5 text-light"><img src=\""""+recruiter.user.photo.url+"""\" class="navbar-img va-top no-margin-top card-left" data-name=\""""+recruiter.user.get_full_name()+"""\"><div class="ml20 row"><h5 class="inline-block no-margin-y">"""+recruiter.user.get_full_name()+"""</h5><small class="text-muted"> in <a href=\"""" + reverse('vacancies_get_vacancy_stage_details', kwargs={'vacancy_id':comment.stage.vacancy.id, 'vacancy_stage':comment.stage.order, 'stage_section':comment.stage_section}) + """\">""" + str(comment.stage_string()) + """</a> - <span class="text-light">"""+naturaltime(comment.logtime)+"""</span></small><br><small class="text-muted comment-text"><p>"""+comment.text.replace('\n','<br>')+"""</p></small></div></div></div>"""
     return JsonResponse(context)
 
-@csrf_exempt
-def retreive_comments(request):
-    pass
 
-@csrf_exempt
 def rate(request):
     context={}
     context['success'] = False
@@ -1918,11 +1933,7 @@ def rate(request):
         messages.success(request, 'Tags Updated')
     return JsonResponse(context)
 
-@csrf_exempt
-def retreive_ratings(request):
-    pass
 
-@csrf_exempt
 def tag(request):
     context={}
     context['success'] = False
@@ -1977,7 +1988,6 @@ def tag(request):
 
     return JsonResponse(context)
 
-@csrf_exempt
 def withdraw(request):
     context={}
     context['success'] = False
@@ -1998,7 +2008,6 @@ def withdraw(request):
             context['msg'] = 'No existing/active application found'
     return JsonResponse(context)
 
-@csrf_exempt
 def pricing_request(request):
     context ={}
     context['success'] = False
@@ -2009,7 +2018,6 @@ def pricing_request(request):
         context['msg'] = 'We have received your inquiry and will get back to you soon.'
     return JsonResponse(context)
 
-@csrf_exempt
 def compare_candidates(request):
     context={}
     if request.method == 'POST' or request.method == 'GET':
@@ -2082,7 +2090,6 @@ def compare_candidates(request):
         raise ValueError()
     return render(request, 'compare_candidates.html', context)
    
-@csrf_exempt
 def filter_candidates(request):
     context = {}
     context['success'] = False
@@ -2300,14 +2307,13 @@ def notifications(request):
             notifications.append(data)
         msg = msg + 'data: '+ json.dumps(notifications) + ' \n'
         msg = msg + '\n'
-        if last_shown > request.session['last_notification']:
+        if last_shown > request.session.get('last_notification', 0):
             request.session['last_notification'] = last_shown
         response.write(msg)
     else:
         response.write('Unauthorised access')
     return response
 
-@csrf_exempt
 def post_message_to_stream(request):
     """Post a message to the activity stream.
 
@@ -2368,7 +2374,6 @@ def post_message_to_stream(request):
             context['msg'] = "No data found to be posted"
     return JsonResponse(context)
 
-@csrf_exempt
 def mark_as_read(request):
     context={}
     context['success'] = False
@@ -2380,7 +2385,6 @@ def mark_as_read(request):
         context['success'] = True
     return JsonResponse(context)
 
-@csrf_exempt
 def set_plan(request):
     context = {}
     context['success'] = False
@@ -2441,7 +2445,6 @@ def set_plan(request):
         context['success'] = True
     return JsonResponse(context)
 
-@csrf_exempt
 def verify_code(request):
     context = {}
     context['success'] = False
@@ -2485,7 +2488,6 @@ def verify_code(request):
             context['msg'] = 'Invalid Code for current plan and company'
     return JsonResponse(context)
 
-@csrf_exempt
 def update_recurring(request):
     context = {}
     context['success'] = False
@@ -2503,7 +2505,6 @@ def update_recurring(request):
         context['msg'] = 'Could not Update. Please check your permissions'
     return JsonResponse(context)
 
-@csrf_exempt
 def renew_now(request):
     context={}
     context['success'] = False
@@ -2537,7 +2538,6 @@ def renew_now(request):
             context['msg'] = 'Unauthorised Transaction'
     return JsonResponse(context)
 
-@csrf_exempt
 def spot(request):
     context = {}
     context['success'] = False
@@ -2579,7 +2579,6 @@ def spot(request):
         #     context['msg'] = 'Activity was not found'
     return JsonResponse(context)
 
-@csrf_exempt
 def smart_share(request,id):
     try:
         recruiter_social_profile = Recruiter.objects.get(user = request.user)
@@ -2591,7 +2590,6 @@ def smart_share(request,id):
     recruiter_social_profile.listatus = 0
     recruiter_social_profile.fbstatus = 0
     recruiter_social_profile.twstatus = 0
-    from utils import posttofbprofile, posttofbgroup, posttofbpage, posttoliprofile, posttolicompany, posttotwitter
     recruiter_social = recruiter_social_profile.user.socialauth_set.all()
     from common.views import debug_token, get_fb_user_groups, get_fb_user_pages, get_li_companies
     for profile in recruiter_social.all():
@@ -2762,7 +2760,6 @@ def revoke_social_auth(request, social_code):
         context['msg'] = 'Unauthorised access'
     return JsonResponse(context)
 
-@csrf_exempt
 def schedule(request):
     """Create or update a schedule entry.
 
@@ -2805,7 +2802,6 @@ def schedule(request):
     json_context['html_response'] = render_to_string('scheduler.html', context)
     return JsonResponse(json_context)
 
-@csrf_exempt
 def remove_schedule(request):
     """Remove a scheduled event.
 
@@ -2836,7 +2832,6 @@ def remove_schedule(request):
         context['msg'] = 'Unauthorised Access'
     return JsonResponse(context)
 
-@csrf_exempt
 def get_upcoming_schedule(request):
     """Retrieve upcoming scheduled events.
 
@@ -2907,7 +2902,6 @@ def custom_template(request):
         context['msg'] = 'Unauthorised Access!'
     return JsonResponse(context)
 
-@csrf_exempt
 def update_site_template(request):
     """Update the site's template settings.
 
@@ -2950,7 +2944,6 @@ def update_site_template(request):
         context['msg'] = 'Unauthorised access'
     return JsonResponse(context)
 
-@csrf_exempt
 def save_template(request):
     """Save a new or updated template.
 
@@ -2985,7 +2978,6 @@ def save_template(request):
         context['msg'] = 'Unauthorised access'
     return JsonResponse(context)
 
-@csrf_exempt
 def get_evaluators(request):
     context = {}
     context['success'] = False
@@ -3010,7 +3002,6 @@ def get_evaluators(request):
         context['msg'] = 'Unauthorised access'
     return JsonResponse(context)
 
-@csrf_exempt
 def get_process_criterias(request):
     context = {}
     context['success'] = False
@@ -3041,7 +3032,6 @@ def get_process_criterias(request):
     return JsonResponse(context)
 
 
-@csrf_exempt 
 def resolve_conflicts_delete(request):
     """Handle deletion of conflicting entries.
 
@@ -3111,7 +3101,6 @@ def template_form(request):
         messages.error(request, 'Unauthorised access')
     return JsonResponse(context)
 
-@csrf_exempt
 def template_form_data(request):
     context = {}
     context['html'] = ""
@@ -3129,7 +3118,6 @@ def template_form_data(request):
         context['msg'] = 'Unauthorised Access'
     return JsonResponse(context)
 
-@csrf_exempt 
 def resolve_conflicts_unconflict(request):
     """Mark conflicts as resolved without merging.
 
@@ -3167,7 +3155,6 @@ def resolve_conflicts_unconflict(request):
         context['msg'] = 'Unauthorised Access'
     return JsonResponse(context)
 
-@csrf_exempt
 def resolve_conflicts_merge(request):
     """Merge conflicting entries.
 
@@ -3314,7 +3301,6 @@ def resolve_conflicts_merge(request):
     return JsonResponse(context)
 
 
-@csrf_exempt
 def add_external_referal(request):
     context = {}
     context['success'] = False
@@ -3354,7 +3340,6 @@ def add_external_referal(request):
         context['msg'] = 'Unauthorised Access'
     return JsonResponse(context)
 
-@csrf_exempt
 def remove_external_referal(request):
     context = {}
     context['success'] = False

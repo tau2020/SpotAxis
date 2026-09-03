@@ -5,27 +5,20 @@ import datetime
 from datetime import date
 from django.shortcuts import render, redirect
 from django.urls import reverse
-from django.template import RequestContext
-import autodoc
-from django.utils.translation import gettext as _
 from common.models import Employment_Type, Degree
 from companies.models import Company_Industry as Industry, Company
-from vacancies.models import Vacancy, Salary_Type, Employment_Experience as Experience
+from vacancies.models import Vacancy, Salary_Type
 from vacancies.forms import BasicSearchVacancyForm
 #from django.utils.timezone import utc
-import datetime
 utc = datetime.timezone.utc
 from TRM.context_processors import subdomain
 from TRM import settings
 from django.db.models import Q, Max
+from django.core.paginator import Paginator
 from common.forms import ContactForm, EarlyAccessForm
 from payments.models import Package
 from utils import is_ajax
-from django.contrib.auth.views import LogoutView
 from django.contrib.auth import logout
-from django.shortcuts import redirect
-from django.http import HttpResponseNotAllowed
-from django_comments.views.comments import comment_done
 
 def index(request):
     if request.method == 'POST':
@@ -238,8 +231,14 @@ def job_board(request):
             jobs = jobsbykeywords | jobsbylocations | jobsbytypes | jobsbyindustries | jobsbydegrees | jobsbysalaries | jobsbyjoinings | jobsbyexperiences
             # raise ValueError(jobs)
     companies = Company.objects.annotate(recent=Max('vacancy__pub_date')).filter(vacancy__in = jobs).order_by('-recent').distinct()
+    paginator = Paginator(companies, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    companies = list(page_obj.object_list)
     for company in companies:
         company.jobs = jobs.filter(company = company)
+    query = request.GET.copy()
+    query.pop('page', None)
+    query_string = query.urlencode()
     template = 'job_board.html'
     page_template = 'job_board_item.html'
     if is_ajax(request):
@@ -251,6 +250,8 @@ def job_board(request):
             'isJobBoard':True,
             'jobs':jobs,
             'companies': companies,
+            'page_obj': page_obj,
+            'query_string': query_string,
             'types': Employment_Type.objects.all(),
             'industries': Industry.objects.all(),
             'degrees': Degree.objects.all(),
@@ -263,9 +264,3 @@ def custom_logout_view(request):
     if request.user.is_authenticated:
         logout(request)
     return redirect('/')
-
-
-def comments_entrypoint(request):
-    if request.method == 'GET':
-        return comment_done(request)
-    return None

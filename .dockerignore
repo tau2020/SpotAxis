@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+media
+staticfiles
+docs
+*.md
+!README.md
+.pre-commit-config.yaml
+.github
+cronjob.log

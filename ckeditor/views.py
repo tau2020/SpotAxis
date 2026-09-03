@@ -8,7 +8,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views import generic
 from django.http import HttpResponse
 from django.shortcuts import render
-from django.template import RequestContext
 
 from ckeditor import image_processing
 from ckeditor import utils

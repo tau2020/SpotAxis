@@ -1,79 +1,51 @@
 # SpotAxis
 
-Version: 1.0 
+SpotAxis is an open-source (MIT licensed) Applicant Tracking System: organizations post jobs on a hosted careers site, candidates apply, and hiring teams move applicants through a pipeline with notes, ratings, interviews and notifications.
 
-SpotAxis is an Open-source (MIT Licensed) Applicant Tracking System to streamline your hiring process.
+The project is being reworked into a lean, low-cost SaaS MVP. The assessment, target architecture, migration plan and roadmap are in [`docs/MVP_ARCHITECTURE_PLAN.md`](docs/MVP_ARCHITECTURE_PLAN.md).
 
-Our vision is to create the most adapted open-source Applicant Tracking System (ATS) that helps businesses to seamlessly manage the entire recruitment process, from attracting candidates to scheduling interviews, making hiring decisions and onboarding.
+## Stack
 
-## SpotAxis can satisfy the use cases of two types of users ##
+- Python 3.12, Django 5.2 (modular monolith, server-rendered templates)
+- PostgreSQL 16
+- gunicorn + WhiteNoise, packaged with the `Dockerfile`; deployed on Railway
+- GitHub Actions for CI (ruff, Django checks, pytest, Docker build) and for the scheduled task ping
 
-### 1. End users(Companies): ###
-These are organizations that want to directly manage their own recruitment process using Spotaxis.
+## Getting started
 
-The key features for end users include the following
-1. Post jobs and maintain job templates
-2. Get your custom branded Career websites
-3. Parse resumes of each applicant
-4. Provide custom application form to candidates
-5. Collaborative hiring
-6. Custom hiring pipeline for each job
-7. Custom rating for candidates in each hiring round
-8. Compare ratings of each candidate
+See [`LOCAL_DEVELOPMENT.md`](LOCAL_DEVELOPMENT.md) for a verified from-scratch setup. In short:
 
-### 2. Developers/Entrepreneurs: ###
-Can customize Spotaxis, add features, and host it for other companies to use as a subscription service(SaaS).
+```bash
+cp .env.example .env            # then set SECRET_KEY
+uv sync --group dev
+createdb spotaxis
+uv run python manage.py migrate
+PATH="$PWD/.venv/bin:$PATH" bash loaddata_from_apps.sh
+uv run python manage.py runserver 8010
+```
 
-The key features for this user type include the following
-1. Everything of End users
-2. Manage multiple organizations as a super admin
-3. Use the default Job Board that is pulled from all the organizations.
-4. Manage jobs and applicants as a super admin
-5. Subscription/Pricing Management for ATS
+Open http://spotaxis.localhost:8010/. Company careers sites live at `http://<slug>.spotaxis.localhost:8010/`.
 
-If you need support implementing this ATS on your server, please reach out to holesh+ats@assystant.com
+## Deployment
 
-## Contributors required ##
+The app is a single container. Required environment variables in production:
 
-1. You can submit bugs  and help us verify as they are live
-2. Contribute to bug fixes
-3. Review and collaborate on source code changes
-4. Write and improve SpotAxis documentation
-5. Contribute new feature development
+| Variable | Purpose |
+| --- | --- |
+| `SECRET_KEY` | Django secret (required when `DEBUG` is off) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SITE_SUFFIX` | e.g. `.spotaxis.com/`; the host part is the main site, companies get `<slug>` subdomains |
+| `MAIN_HOSTS` | Extra hosts that should serve the main site (e.g. the Railway domain) |
+| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | SMTP settings |
+| `TASK_RUNNER_TOKEN` | Bearer token for `POST /internal/tasks/run` |
+| `SENTRY_DSN` | Optional error reporting |
 
-## Project Dependencies ##
+`railway.json` configures the Docker build and the `/healthz` health check.
 
-* Python 2.7
-* beautifulsoup4
-* autodoc
-* dateutils
-* decorator
-* Django==1.9.5
-* django-localflavor
-* django-rosetta
-* django-social-share
-* docutils
-* html5lib
-* httplib2
-* microsofttranslator
-* oauth2
-* oauthlib
-* Pillow==2.1.0
-* pisa
-* polib
-* PyJWT
-* PyMySQL
-* pyPdf
-* ~PyPDF2~
-* python-dateutil
-* python-openid
-* python-social-auth
-* pytz
-* reportlab==2.7
-* requests
-* requests-oauthlib
-* six
-* waitress
-* Weasyprint
-* WebOb
-* WebTest
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `uv run ruff check .` and `uv run pytest` before opening a pull request; CI enforces both.
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).

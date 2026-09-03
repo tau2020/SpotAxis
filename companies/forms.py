@@ -3,16 +3,13 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from django import forms
-from django.db.models import Q
-from django.http import Http404
 from django.utils.translation import gettext_lazy as _
 from phonenumber_field.formfields import PhoneNumberField as PNF
-from candidates.models import Academic_Area, Academic_Status, get_degrees, Language
-from common.forms import get_states, get_initial_country
+from candidates.models import Academic_Area, Academic_Status, get_degrees
+from common.forms import get_initial_country
 from common.models import Country, User, Gender, Degree
 # from companies.custom_fields import MXRFCField_Custom
 from companies.models import Company_Industry, Company, RecruiterInvitation
-from upload_logos.widgets import AjaxClearableFileInput
 from vacancies.models import get_ages
 from TRM.settings import LOGO_COMPANY_DEFAULT
 from ckeditor.widgets import CKEditorWidget
@@ -588,9 +585,6 @@ class SearchCvForm(forms.Form):
         state_selected = kwargs.pop('state_selected', None)
         super(SearchCvForm, self).__init__(*args, **kwargs)
 
-        if self.is_bound:
-            self.fields['career'].choices = get_academic_careers(area_selected)
-            self.fields['municipal'].choices = get_municipals(state_selected)
 
     def clean_degree(self):
         """
@@ -683,7 +677,7 @@ class SearchCvForm(forms.Form):
     #                 careers.append(career)
     #     except:
     #         raise forms.ValidationError(invalid_career)
-        return careers
+        return self.cleaned_data.get('careers', [])
 
     def clean_min_age(self):
         """

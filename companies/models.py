@@ -3,11 +3,10 @@
 from __future__ import absolute_import
 import re
 from ckeditor.fields import RichTextField
-from common.models import Address, Subdomain, Country, Currency
+from common.models import Subdomain, Country, Currency
 from django.core import validators
 from django.urls import reverse
 from django.db import models
-from django.db.models.fields import CharField
 from django.utils.translation import gettext as _
 from hashids import Hashids
 from phonenumber_field.modelfields import PhoneNumberField

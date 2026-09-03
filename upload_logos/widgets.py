@@ -8,7 +8,7 @@ from django.utils.translation import gettext as _
 
 # import urllib2
 try:
-    import urllib.request as urllib2
+    pass
 except:
     import urllib.request, urllib.error, urllib.parse
 

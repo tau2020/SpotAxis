@@ -12,8 +12,33 @@ Includes:
 from __future__ import absolute_import
 from customField.models import *
 from django import forms
+
+# Only these Django form field/widget classes may be referenced from the
+# database-driven FieldType table.
+ALLOWED_FORM_FIELDS = {
+    'CharField', 'ChoiceField', 'MultipleChoiceField', 'BooleanField', 'IntegerField',
+    'EmailField', 'DateField', 'URLField', 'DecimalField', 'FloatField',
+}
+ALLOWED_FORM_WIDGETS = {
+    'Textarea', 'Select', 'RadioSelect', 'CheckboxSelectMultiple', 'CheckboxInput',
+    'TextInput', 'EmailInput', 'NumberInput', 'DateInput', 'SelectMultiple', 'URLInput',
+}
+
+
+def form_field_class(name):
+    name = str(name)
+    if name not in ALLOWED_FORM_FIELDS:
+        raise ValueError(f'Unsupported form field type: {name}')
+    return getattr(forms, name)
+
+
+def form_widget_class(name):
+    name = str(name)
+    if name not in ALLOWED_FORM_WIDGETS:
+        raise ValueError(f'Unsupported form widget: {name}')
+    return getattr(forms, name)
 from django.forms import ModelForm
-from django.forms.models import BaseInlineFormSet, inlineformset_factory, ModelForm
+from django.forms.models import BaseInlineFormSet, inlineformset_factory
 from nested_formset import *
 
 class FieldForm(BaseNestedModelForm):
@@ -222,7 +247,6 @@ class BaseFieldFormset(BaseNestedFormset):
         for index,form in enumerate(self.forms):
             cleaned_data = form.clean()
             if cleaned_data:
-                import pdb
                 # pdb.set_trace()
                 field_label = cleaned_data.get('name','')
                 field_type = cleaned_data.get('field_type','')
@@ -295,9 +319,9 @@ class BaseFieldFormset(BaseNestedFormset):
                 except:
                     field_type = None
                 if field_type:
-                    formField = eval("django.forms." + str(field_type.form_field))
+                    formField = form_field_class(field_type.form_field)
                     if field_type.field_widget:
-                        formWidget = eval("django.forms." + str(field_type.field_widget))
+                        formWidget = form_widget_class(field_type.field_widget)
                     else:
                         formWidget = None
                     form.fields[field.data.get("field_set-"+str(counter)+'-name',"")] = formField()
@@ -382,9 +406,9 @@ class TemplatedForm(forms.Form):
         self.template = template
         if template:
             for field in template.field_set.all():
-                formField = eval("django.forms." + str(field.field_type.form_field))
+                formField = form_field_class(field.field_type.form_field)
                 if field.field_type.field_widget:
-                    formWidget = eval("django.forms." + str(field.field_type.field_widget))
+                    formWidget = form_widget_class(field.field_type.field_widget)
                 else:
                     formWidget = None
                 self.fields[field.name] = formField()

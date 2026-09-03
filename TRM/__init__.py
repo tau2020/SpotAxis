@@ -1,7 +1,17 @@
-# These lines are provisional as a new version
-# of MySQLdb: http://sourceforge.net/projects/mysql-python
-# that supports Python3.X
-# TODO: Quitar estas lineas cuando MySQLdb soporte Python.X
-from __future__ import absolute_import
-import pymysql
-pymysql.install_as_MySQLdb()
+"""SpotAxis project package.
+
+The only runtime setup here is a macOS-specific library path shim so that
+WeasyPrint (loaded through cffi) can find Homebrew's Pango/GLib/cairo when
+Django is started from a shell whose ``DYLD_*`` variables were stripped by
+System Integrity Protection. It is a no-op everywhere else.
+"""
+import os
+import sys
+
+if sys.platform == 'darwin':
+    _brew_lib_dirs = [d for d in ('/opt/homebrew/lib', '/usr/local/lib') if os.path.isdir(d)]
+    if _brew_lib_dirs:
+        _current = os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '')
+        _missing = [d for d in _brew_lib_dirs if d not in _current.split(':')]
+        if _missing:
+            os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = ':'.join(_missing + ([_current] if _current else []))

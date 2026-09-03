@@ -12,19 +12,19 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
-from django.http import Http404, JsonResponse
 from django.http import Http404, JsonResponse, HttpResponse
+from django.core.exceptions import PermissionDenied
+from companies.models import Recruiter
 from django.shortcuts import render, redirect, get_object_or_404
-from django.template import RequestContext
 from weasyprint import HTML
 from companies.models import Company_Industry
 from .forms import AcademicForm, CandidateForm, CvLanguageForm, ExpertiseForm, ObjectiveForm, \
     cv_FileForm, TrainingForm, CertificateForm, ProjectForm, InterestsForm, \
     HobbiesForm, ExtraCurricularsForm, OthersForm, CandidateContactForm
 from .models import Candidate, Academic, Academic_Area, Academic_Status, Curriculum, CV_Language, \
-     Expertise, Language, Language_Level, Training, Certificate, Project
+     Expertise, Language, Training, Certificate, Project
 from common import registration_settings as up_settings
-from common.models import State, Profile, User, Gender, Marital_Status, Municipal, Degree, Country
+from common.models import Profile, User, Gender, Marital_Status, Degree, Country
 from common.forms import UserDataForm, UserPhotoForm
 from django.forms.models import modelformset_factory
 from vacancies.models import Vacancy_Status, Postulate, Candidate_Fav
@@ -33,6 +33,20 @@ from TRM.settings import SITE_URL
 from django.db.models import Q
 from six.moves import range
 from utils import is_ajax
+
+def _require_candidate_access(request, candidate):
+    """Allow the candidate themselves, staff, or a recruiter whose company has
+    an application from this candidate."""
+    user = request.user
+    if not user.is_authenticated:
+        raise PermissionDenied
+    if user.is_staff or candidate.user_id == user.id:
+        return
+    recruiter = Recruiter.objects.filter(user=user, user__is_active=True).first()
+    if recruiter and Postulate.objects.filter(candidate=candidate, vacancy__company__in=recruiter.company.all()).exists():
+        return
+    raise PermissionDenied
+
 
 def resume_builder(request):
     """
@@ -104,6 +118,7 @@ def resume_builder_templates(request,candidate_id=None):
     """
     try: 
         candidate = Candidate.objects.get(id = candidate_id)  
+        _require_candidate_access(request, candidate)
         referer = request.META['HTTP_REFERER']
     except:
         referer = None
@@ -615,9 +630,6 @@ def cv_delete_item(request, expertise_id=None, academic_id=None, software_id=Non
     if academic_id:
         academic= get_object_or_404(Academic, id=academic_id, candidate=candidate)
         academic.delete()
-    if software_id:
-        software = get_object_or_404(CV_Software, id=software_id, candidate=candidate)
-        software.delete()
     return redirect(edit_curriculum)
 
 
@@ -637,6 +649,7 @@ def curriculum_to_pdf(request, candidate_id, template=None):
     from TRM.settings import MEDIA_URL
 
     candidate = get_object_or_404(Candidate, pk=candidate_id)
+    _require_candidate_access(request, candidate)
     academics = Academic.objects.filter(candidate=candidate)
     expertises = Expertise.objects.filter(candidate=candidate)
     languages = CV_Language.objects.filter(candidate=candidate)

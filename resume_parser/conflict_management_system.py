@@ -1,10 +1,6 @@
 from __future__ import absolute_import
 from __future__ import print_function
-import datefinder
 import json
-import re
-import sys
-import pdb
 
 """
   STATUS:
@@ -95,6 +91,23 @@ def get_name_status(candidate_profile, conflicted_profile):
 
     print(message)
     return status
+
+def get_experience_status(original_experience, experience):
+    """Compare two work-experience rows.
+
+    Returns 0 when they describe the same position, 1 when the original has no
+    comparable data, and 2 when they conflict. Mirrors get_education_status.
+    """
+    fields = ('company', 'employment', 'start_date', 'end_date', 'present')
+    original_values = [getattr(original_experience, f, None) for f in fields]
+    if not any(original_values):
+        return 1
+    for f in fields:
+        a, b = getattr(original_experience, f, None), getattr(experience, f, None)
+        if a and b and a != b:
+            return 2
+    return 0
+
 
 def get_education_status(original_education, education):
     '''

@@ -1,0 +1,20 @@
+name: Scheduled tasks
+
+# Triggers the application's periodic tasks (publish/unpublish jobs, outbox
+# flush, reminders). Set TASK_RUNNER_URL and TASK_RUNNER_TOKEN as repository
+# secrets; the token must match the app's TASK_RUNNER_TOKEN.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    if: ${{ vars.TASK_RUNNER_ENABLED == 'true' }}
+    steps:
+      - name: Run tasks
+        run: |
+          curl --fail --silent --show-error --max-time 60 -X POST \
+            -H "Authorization: Bearer ${{ secrets.TASK_RUNNER_TOKEN }}" \
+            "${{ secrets.TASK_RUNNER_URL }}"
