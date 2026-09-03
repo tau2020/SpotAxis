@@ -18,9 +18,9 @@ What *is* wrong is concentrated and fixable:
 - **Operations**: MySQL, local-disk media served by Django, `django_crontab`, no Dockerfile, no CI, no tests for core apps, committed TLS private keys.
 - **Frontend**: jQuery 1.12 + Bootstrap 3 with 23k lines of inline JS in templates.
 
-**Target stack (one recommendation):** Django 5.2 monolith · PostgreSQL on Neon · Django auth + django-allauth · Cloudflare R2 for files · Resend for email · Render for hosting (Docker) · Cloudflare DNS/CDN · Sentry + UptimeRobot · PostHog. Server-rendered templates with HTMX + Alpine.js + Bootstrap 5, no build step.
+**Target stack (one recommendation):** Django 5.2 monolith · PostgreSQL on Neon · Django auth + django-allauth · Cloudflare R2 for files · Resend for email · Railway for hosting (Docker) · Cloudflare DNS/CDN · Sentry + UptimeRobot · PostHog. Server-rendered templates with HTMX + Alpine.js + Bootstrap 5, no build step.
 
-**Cost:** $0/month for development and staging; ~$8/month at first paying customers; ~$60–95/month at 100 organizations.
+**Cost:** $0/month for development; ~$6–8/month for a live staging/production service; ~$65–95/month at 100 organizations.
 
 **Effort:** roughly 45–55 developer-days for the MVP. Best case 6 weeks, realistic 9–10 weeks with 2–3 developers.
 
@@ -230,7 +230,7 @@ flowchart TB
         DNS[DNS + wildcard *.spotaxis.com<br/>TLS, CDN cache for static]
     end
 
-    subgraph Render["Render — one Docker web service"]
+    subgraph Railway["Railway — one Docker web service"]
         direction TB
         WEB["Django 5.2 monolith<br/>gunicorn + WhiteNoise<br/>HTML + HTMX partials"]
         TASK["Task runner endpoint<br/>/internal/tasks (token)"]
@@ -265,7 +265,7 @@ flowchart TB
     GHA -->|curl every 5 min| TASK
     TASK --> WEB
     UPTIME -->|/healthz| WEB
-    GHA -->|deploy hook on merge| Render
+    GHA -.->|CI gate; Railway deploys on push| Railway
 ```
 
 Communication paths: browsers talk only to Django (HTML, HTMX partial HTML, form posts) and to R2 for signed downloads. Django talks to Postgres, R2, Resend and Sentry. Nothing else talks to anything. There is no separate API server, no queue, no worker process.
@@ -594,10 +594,10 @@ Mapping from current tables (data migration is a rename-and-normalize, not a reb
 | **Auth** | **Django auth + django-allauth** (email verification, password reset, later Google/Microsoft OAuth) with existing `common.User` | Already have users, sessions, password hashing; allauth replaces the broken hand-rolled activation/verification/social code with ~50 lines of config; no per-MAU pricing ever | Unlimited | $0 | Low: config + templates | None | If SSO/SAML needed later, allauth has SAML; or front with an IdP without changing the app |
 | **Storage** | **Cloudflare R2** via `django-storages[s3]`, private bucket, signed URLs (15 min) | S3-compatible so `boto3` + django-storages work unchanged; zero egress fees (CV downloads by recruiters are egress-heavy) | Free: 10 GB storage, 1M class-A + 10M class-B ops/month, unlimited egress | $0 until ~10 GB, then $0.015/GB/month | Very low | Low: S3 API; `rclone` to move buckets | Any S3-compatible store (Backblaze B2, Supabase Storage, MinIO on a VPS) |
 | **Email** | **Resend** via `django-anymail` (HTTP API, webhooks for bounces) | Simple API, good deliverability, DKIM/SPF setup guide; anymail abstracts the provider | Free: 3,000 emails/month, 100/day, 1 custom domain | $0 → $20/month (50k) | Very low | None (anymail: change one setting to switch to Brevo, Postmark, SES, Mailgun) | One setting |
-| **Hosting** | **Render** Web Service from a Dockerfile; free instance for staging, Starter for production | Zero-ops PaaS with Docker (WeasyPrint's native libs are painless), wildcard custom domains, deploy-on-push, preview environments, logs, health checks, `render.yaml` infra-as-code | Free: 750 instance-hours/month, 512 MB RAM, spins down after 15 min idle (staging only) | Starter $7/month (512 MB, always-on) | Very low | Low: it's a Dockerfile; move to Fly/Railway/VPS in an afternoon | Dockerfile is portable |
-| **Background jobs** | **No worker.** Publish/close windows evaluated at query time; an `email_outbox` and any periodic work flushed by `POST /internal/tasks/run` (token-protected) called by a **GitHub Actions schedule** every 5 min | Removes an entire process and a queue; MVP has no long-running work (CV text extraction takes < 1 s and runs inline) | GitHub Actions: 2,000 min/month free (a curl uses ~10 s) | $0 | Very low | None | Swap to Render Cron ($1/month) or a real worker (django-q2 / Celery) when a job exceeds a request budget |
-| **DNS / TLS / CDN** | **Cloudflare** free plan in front of Render | Wildcard `*.spotaxis.com` for careers sites, free TLS, caching of static, basic WAF/bot protection | Free | $0 | Very low | Low | Any DNS |
-| **Monitoring** | **Sentry** (errors + performance sampling) + **UptimeRobot** (`/healthz`) + Render logs | Catches the silent-exception culture immediately; 5-minute uptime checks | Sentry free: 5k errors/month, 1 user; UptimeRobot free: 50 monitors, 5-min interval | $0 | Very low | Low | GlitchTip self-host or Sentry self-host if ever needed |
+| **Hosting** | **Railway** service built from the Dockerfile; Railway Postgres or Neon for the database | Zero-ops PaaS with Docker (WeasyPrint's native libs are painless), custom and wildcard domains, deploy-on-push from GitHub, PR environments, logs, health checks, `railway.json` config, built-in cron-scheduled services | Trial credit only; Hobby plan is $5/month including $5 of usage | Hobby $5/month covers a small web service (~$3–4 of usage); add ~$1–2 for Railway Postgres or use Neon free | Very low | Low: it's a Dockerfile; move to Render/Fly.io/VPS in an afternoon | Dockerfile is portable |
+| **Background jobs** | **No worker.** Publish/close windows evaluated at query time; an `email_outbox` and any periodic work flushed by `POST /internal/tasks/run` (token-protected) called by a **GitHub Actions schedule** every 5 min | Removes an entire process and a queue; MVP has no long-running work (CV text extraction takes < 1 s and runs inline) | GitHub Actions: 2,000 min/month free (a curl uses ~10 s) | $0 | Very low | None | Swap to a Railway cron-scheduled service or a real worker (django-q2 / Celery) when a job exceeds a request budget |
+| **DNS / TLS / CDN** | **Cloudflare** free plan in front of Railway | Wildcard `*.spotaxis.com` for careers sites, free TLS, caching of static, basic WAF/bot protection | Free | $0 | Very low | Low | Any DNS |
+| **Monitoring** | **Sentry** (errors + performance sampling) + **UptimeRobot** (`/healthz`) + Railway logs | Catches the silent-exception culture immediately; 5-minute uptime checks | Sentry free: 5k errors/month, 1 user; UptimeRobot free: 50 monitors, 5-min interval | $0 | Very low | Low | GlitchTip self-host or Sentry self-host if ever needed |
 | **Analytics** | **PostHog** cloud (product analytics, funnels, session replay) | Need to know which features orgs use before pricing; generous free tier | Free: 1M events/month, 5k replays | $0 | Very low | Low (open source, self-hostable) | Self-host or drop |
 | **CI** | **GitHub Actions**: ruff, pytest with Postgres service, Docker build, deploy hook | Already on GitHub | 2,000 min/month | $0 | Low | None | Any CI |
 
@@ -609,8 +609,8 @@ Options evaluated and not chosen:
 - **Clerk**: per-MAU pricing after 10k MAU and a JS-first SDK; Django integration means verifying JWTs and mirroring users. No benefit over allauth here.
 - **Auth.js**: JavaScript-only. Not applicable.
 - **Vercel / Cloudflare Workers for Django**: serverless Python with cold starts, no persistent filesystem for WeasyPrint/pdfminer temp files, 250 MB bundle limits. Rejected.
-- **Fly.io**: excellent, but no free tier anymore and requires `flyctl` fluency; roughly the same price as Render Starter. Acceptable alternative.
-- **Railway**: $5/month Hobby with usage credits; comparable. Acceptable alternative.
+- **Fly.io**: excellent, but no free tier anymore and requires `flyctl` fluency; roughly the same price. Acceptable alternative.
+- **Render**: free web tier spins down after 15 minutes idle; Starter $7/month always-on; comparable. Acceptable alternative.
 - **Single VPS (Hetzner CX22 ~€4/month) with Docker Compose (Django + Postgres + Caddy)**: cheapest all-in and fully portable, but the team owns OS patches, Postgres backups, TLS renewal and incident response. Recommended *only* if the team already runs servers. Documented as the fallback if PaaS costs cross ~$100/month.
 - **Keep MySQL**: possible (Django supports it), but there is no good free managed MySQL (PlanetScale dropped its free tier), no native full-text ranking comparable to Postgres, and JSONB/tsvector/CTEs are worth having. The switch is cheap now (no production data of consequence) and expensive later.
 
@@ -655,7 +655,7 @@ Options evaluated and not chosen:
 | `common/ajax.py` (3,379 lines, 70 csrf_exempt) | Works; unsafe | **REFACTOR** | Dissolve into app views as HTMX endpoints with CSRF; delete duplicates | High | L (spread across phases) | Medium |
 | Templates: base layout, Bootstrap 3, jQuery 1.12, inline JS | Works; unmaintainable | **REFACTOR** screen by screen | New `base.html` on Bootstrap 5 + HTMX; legacy screens keep old base until migrated | Medium | XL (spread) | Medium |
 | `output.html`, `script.py`, `ssl/`, `requirements.txt`, `setup/config.json`, `.old` files, `backp/` | Debris / secrets | **REMOVE** (rotate any exposed credentials) | Hygiene | Low | XS | None |
-| Dockerfile, `render.yaml`, CI, pre-commit (ruff), pytest | Absent | **ADD** | Deployability and safety net | Low | M | Low |
+| Dockerfile, `railway.json`, CI, pre-commit (ruff), pytest | Absent | **ADD** | Deployability and safety net | Low | M | Low |
 | Tenant scoping (`OrgQuerySet.for_org`, `request.organization`, decorators) | Absent | **ADD** | Core of multi-tenancy | Medium | M | Medium |
 | `AuditLog` | Absent | **ADD** | Compliance/trust for buyers | Low | S | Low |
 | Full-text search vector + triggers | Absent | **ADD** | Candidate search without Elasticsearch | Low | S | Low |
@@ -666,7 +666,7 @@ Options evaluated and not chosen:
 
 The strategy is a **strangler inside the same repository**: new code paths grow alongside old ones, each screen switches over when ready, and nothing is deleted before its replacement is live.
 
-1. **Week 1 – Stabilize in place** (no data model changes). Close the five critical security holes with decorators, delete dead apps and dependencies, add Docker + CI + ruff + pytest, switch the local DB to Postgres. The current UI keeps working; it just becomes safe and deployable. Deploy to Render staging with a Neon branch.
+1. **Week 1 – Stabilize in place** (no data model changes). Close the five critical security holes with decorators, delete dead apps and dependencies, add Docker + CI + ruff + pytest, switch the local DB to Postgres. The current UI keeps working; it just becomes safe and deployable. Deploy to Railway staging.
 2. **Introduce `core/` and the tenancy layer** without breaking old views: add `OrganizationMember` alongside `Recruiter` and backfill it from the M2M; add `request.organization` middleware that resolves from the logged-in user's membership on the app host and from the subdomain on careers hosts. Old views can call `request.organization`; new views must.
 3. **New `base_v2.html`** (Bootstrap 5, HTMX). Each rebuilt screen extends `base_v2`; unmigrated screens extend the old base. Navigation links point to whichever version is live. A feature flag per screen (`settings.V2_SCREENS`) lets a screen be switched back if a bug surfaces.
 4. **Model refactors are additive first, destructive last**: add new columns/tables (`status`, `current_stage`, `application_stage_history`), dual-write from old views via signals or service functions, migrate data, switch reads, then drop old columns in a later migration. The `Postulate → Application` rename is a `db_table` rename with a model rename, not a copy.
@@ -685,7 +685,7 @@ Scale: XS < 0.5 day · S 0.5–1 day · M 1–3 days · L 3–5 days · XL > 5 d
 |---|---|---|---|---|---|---|
 | Repo cleanup (dead apps, deps, debris, secrets rotation) | Present | Delete, fix imports, prune `pyproject` | Low | S | — | Low |
 | Critical security fixes in place | Vulnerable | Auth/tenant checks on ajax views, drop DRF, secure tokens, ALLOWED_HOSTS, cookie/HSTS settings | Low | M | — | Low |
-| Dockerfile + `render.yaml` + GitHub Actions CI/CD | Absent | Build, test with Postgres service, deploy hook | Low | M | — | Low |
+| Dockerfile + `railway.json` + GitHub Actions CI | Absent | Build, test with Postgres service, deploy hook | Low | M | — | Low |
 | Postgres switch + migration squash | MySQL, 153 migrations | psycopg, fixture reload, squash per app, fix MySQL-isms | Medium | M | Cleanup | Medium |
 | Settings hardening & env config | Partial | `django-environ`, split base/prod, security headers, host config, per-org timezone | Low | S | — | Low |
 | Tenancy layer (`Organization`, `OrganizationMember`, `for_org`, middleware, decorators) | Convention only | New models + backfill + middleware + 3 decorators + tests | Medium | L | Postgres | Medium |
@@ -748,7 +748,7 @@ Advantages:
 - A 2–3 person team can hold it in their heads.
 
 Disadvantages:
-- Scaling is vertical first (bigger instance) before horizontal (more instances behind Render's load balancer, which is still one click).
+- Scaling is vertical first (bigger instance) before horizontal (more instances behind Railway's load balancer, which is still one click).
 - Module discipline relies on review until `import-linter` is added.
 
 Alternative: microservices (jobs, candidates, notifications as separate services).
@@ -774,7 +774,7 @@ Why not: it would be a rewrite; RLS-based tenancy is powerful but hard to test a
 ### Serverless vs persistent backend
 
 **Decision:** runtime model.
-**Recommended approach:** one persistent container (gunicorn, 2–3 workers) on Render.
+**Recommended approach:** one persistent container (gunicorn, 2–3 workers) on Railway.
 
 Advantages:
 - No cold starts on customer-facing careers pages.
@@ -852,13 +852,13 @@ Advantages:
 Disadvantages:
 - Another account to manage; local dev needs MinIO or the filesystem backend (a settings switch).
 
-Alternative: local disk on the Render instance, or Render persistent disk.
-Why not: Render's free/Starter filesystem is ephemeral; a disk costs $0.25/GB/month, is single-instance and un-CDN-able; losing every uploaded CV on a redeploy is unacceptable for a sold product.
+Alternative: local disk in the container, or a Railway volume.
+Why not: Railway's container filesystem is ephemeral; a volume costs $0.15/GB/month, is single-instance and un-CDN-able; losing every uploaded CV on a redeploy is unacceptable for a sold product.
 
 ### Free-tier infrastructure vs dedicated infrastructure
 
 **Decision:** how much to lean on free tiers.
-**Recommended approach:** free tiers for development, staging and preview; one paid always-on web instance for production from day one ($7); everything else free until usage crosses documented thresholds.
+**Recommended approach:** free tiers for development, staging and preview; one paid always-on web service for production from day one (Railway Hobby, $5); everything else free until usage crosses documented thresholds.
 
 Advantages:
 - Total early cost under $10/month.
@@ -866,7 +866,7 @@ Advantages:
 
 Disadvantages:
 - Free tiers change; Neon's autosuspend adds ~0.5 s to the first query after idle (paid removes it). Resend's 100/day cap will be the first thing hit.
-- Several vendor accounts (Render, Neon, Cloudflare, Resend, Sentry, PostHog, GitHub) to secure with 2FA and a shared ops inbox.
+- Several vendor accounts (Railway, Neon, Cloudflare, Resend, Sentry, PostHog, GitHub) to secure with 2FA and a shared ops inbox.
 
 Alternative: one VPS running everything.
 Why not for now: it is $4–5/month cheaper but transfers backups, patching, TLS and monitoring to the team. It is the documented escape hatch once PaaS spend passes ~$100/month or the team gains an ops-minded member.
@@ -879,25 +879,25 @@ Why not for now: it is $4–5/month cheaper but transfers backups, patching, TLS
 
 | Service | Free Tier | Early MVP Cost (≤10 orgs) | Growth Cost (100–500 orgs) | Replacement Option |
 |---|---|---|---|---|
-| Render web service | 750 h/month, 512 MB, spins down (staging) | Starter $7 | Standard $25 (2 GB) at ~100 orgs; Pro $85 or 2× Standard at ~500 | Fly.io, Railway, Hetzner VPS |
-| Neon Postgres | 0.5 GB, 190 CPU-h, autosuspend | $0 | Launch $19 at ~50–80 orgs (storage), Scale $69 at ~400+ | Supabase, Render Postgres ($6+), RDS, VPS Postgres |
+| Railway web service | 30-day trial credit only | Hobby $5 (includes $5 usage; a small Django service uses ~$3–4) | ~$15–25 of usage at ~100 orgs (1–2 GB RAM); ~$60–90 at ~500 orgs (2 replicas) | Render, Fly.io, Hetzner VPS |
+| Postgres (Neon free, or Railway Postgres) | Neon: 0.5 GB, 190 CPU-h, autosuspend. Railway: usage-billed, ~$1–2/month idle | $0 (Neon) or ~$1–2 (Railway) | Neon Launch $19 at ~50–80 orgs, Scale $69 at ~400+; Railway ~$10–30 at similar scale | Supabase, RDS, VPS Postgres |
 | Cloudflare R2 | 10 GB, 10M reads, unlimited egress | $0 | $1–3 (100 orgs, 36 GB after a year); ~$8–12 at 500 orgs | Backblaze B2, Supabase Storage, S3 |
 | Resend | 3,000/month, 100/day | $0 (≈750 emails/month at 3 orgs; cap reached ~12 orgs) | Pro $20 (50k) at 10–200 orgs; Scale $90 (100k+) at ~500 | Brevo (300/day free), Postmark, SES ($0.10/1k) via anymail |
-| Cloudflare DNS/CDN/TLS | Free | $0 | $0 (Pro $20 only if WAF rules needed) | Any DNS + Render TLS |
-| GitHub Actions | 2,000 min/month | $0 | $0–4 | Render Cron ($1) |
+| Cloudflare DNS/CDN/TLS | Free | $0 | $0 (Pro $20 only if WAF rules needed) | Any DNS + Railway TLS |
+| GitHub Actions | 2,000 min/month | $0 | $0–4 | Railway cron-scheduled service |
 | Sentry | 5k errors, 1 user | $0 | Team $26 at ~100 orgs (more seats/errors) | GlitchTip, self-hosted Sentry |
 | UptimeRobot | 50 monitors | $0 | $0 | Better Stack, Cloudflare health checks |
 | PostHog | 1M events | $0 | $0–30 | Umami self-host, Plausible |
 | Domain | — | ~$1 (amortized $12/yr) | ~$1 | — |
-| **Total** | | **≈ $8/month** | | |
+| **Total** | | **≈ $6–8/month** | | |
 
 | Stage | Orgs | Monthly estimate | Notes |
 |---|---|---|---|
-| Development / staging | 0 | **$0** | Render free instance, Neon free branch, R2/Resend/Sentry free |
-| Early customers | 10 | **$8–28** | $7 Render + domain; Resend Pro ($20) kicks in around 12 orgs or the first bulk-email day |
+| Development / staging | 0 | **$0** | Railway service, Neon free branch, R2/Resend/Sentry free |
+| Early customers | 10 | **$6–28** | $5 Railway Hobby + domain; Resend Pro ($20) kicks in around 12 orgs or the first bulk-email day |
 | Growth | 50 | **$28–47** | + Neon Launch $19 once DB passes 0.5 GB (~month 6–10 at this size) |
-| Scale-up | 100 | **$65–95** | Render Standard $25, Neon $19–25, Resend $20, R2 ~$2, Sentry $0–26 |
-| Established | 500 | **$250–350** | Render Pro/2× Standard $85–110, Neon Scale $69–100, Resend Scale $90, R2 ~$10, Sentry $26, PostHog $0–30 |
+| Scale-up | 100 | **$65–95** | Railway ~$20–25 usage, Neon $19–25, Resend $20, R2 ~$2, Sentry $0–26 |
+| Established | 500 | **$250–350** | Railway 2 replicas ~$60–90, Neon Scale $69–100, Resend Scale $90, R2 ~$10, Sentry $26, PostHog $0–30 |
 
 **First cost bottlenecks, in order of when they hit**
 
@@ -919,8 +919,8 @@ Why not for now: it is $4–5/month cheaper but transfers backups, patching, TLS
 | **Auth** | Django auth + django-allauth (email verification, password reset; Google/Microsoft OAuth later) |
 | **Storage** | Cloudflare R2, private bucket, signed URLs via django-storages S3 backend |
 | **Email** | Resend through django-anymail, with an `email_outbox` table for retry |
-| **Hosting** | Render Web Service (Docker); Cloudflare for DNS, wildcard TLS and CDN; GitHub Actions for CI, deploy hook and the 5-minute task ping |
-| **Monitoring** | Sentry (errors, performance sampling), UptimeRobot on `/healthz`, Render logs; structured JSON logging |
+| **Hosting** | **Railway** service built from the Dockerfile; Railway Postgres or Neon for the database | Zero-ops PaaS with Docker (WeasyPrint's native libs are painless), custom and wildcard domains, deploy-on-push from GitHub, PR environments, logs, health checks, `railway.json` config, built-in cron-scheduled services | Trial credit only; Hobby plan is $5/month including $5 of usage | Hobby $5/month covers a small web service (~$3–4 of usage); add ~$1–2 for Railway Postgres or use Neon free | Very low | Low: it's a Dockerfile; move to Render/Fly.io/VPS in an afternoon | Dockerfile is portable |
+| **Monitoring** | Sentry (errors, performance sampling), UptimeRobot on `/healthz`, Railway logs; structured JSON logging |
 | **Analytics** | PostHog cloud (product analytics); Cloudflare Web Analytics for careers-page traffic |
 
 ### Final architecture diagram
@@ -934,7 +934,7 @@ flowchart TB
 
     CF[Cloudflare<br/>DNS · wildcard TLS · CDN · WAF]
 
-    subgraph RenderSvc["Render web service (Docker, 1→N instances)"]
+    subgraph RailwaySvc["Railway web service (Docker, 1→N replicas)"]
         direction TB
         GUN[gunicorn]
         subgraph Django["Django 5.2 modular monolith"]
@@ -974,7 +974,7 @@ flowchart TB
     Django --> SENTRY
     REC -.-> PH
     GHA -->|curl + token| TASKR
-    GHA -->|deploy hook| RenderSvc
+    GHA -.->|CI gate; Railway deploys on push| RailwaySvc
     UR --> HZ
 ```
 
@@ -984,7 +984,7 @@ flowchart TB
 - **Simplicity**: one runtime, one database, one storage bucket, one email API, no queue, no worker, no build pipeline, no second codebase. The whole system fits on one diagram and in one Dockerfile.
 - **Development speed**: reuses the existing Django domain model, admin and email templates; HTMX lets a Django developer ship interactive screens without a JavaScript toolchain; allauth and django-storages replace thousands of lines of custom code with configuration.
 - **Maintainability**: a small, boring, well-documented stack (Django LTS cadence, Postgres, S3 API). The modular boundaries and service functions make the code testable; CI enforces linting and tests; Sentry replaces silent `except:` blocks.
-- **Reliability**: managed Postgres with point-in-time recovery on the paid tier, durable object storage, a transactional email provider with bounce webhooks, health checks and uptime monitoring, one always-on instance with zero-downtime deploys on Render.
+- **Reliability**: managed Postgres with point-in-time recovery on the paid tier, durable object storage, a transactional email provider with bounce webhooks, health checks and uptime monitoring, one always-on service with zero-downtime deploys on Railway.
 - **Scalability**: horizontal scaling is "increase instance count" because the app is stateless (sessions in DB, files in R2). Postgres full-text search carries candidate search to hundreds of thousands of records; JSONB carries custom forms. When a real background workload appears, django-q2 with the Postgres broker adds a worker without new infrastructure. The `organization_id` schema allows RLS or dedicated deployments for enterprise customers without redesign.
 
 ---
@@ -999,9 +999,9 @@ flowchart TB
 - Prune `pyproject.toml`: drop `south`, `selenium`, `xvfbwrapper`, `pandas`, `scipy`, `nltk`, `pyth`, `oauth2`, `python-linkedin`, `rosetta`/`django-rosetta`, `django-tagging`, `django-xmlrpc`, `mots-vides`, `textile`, `paypalrestsdk`, `django-crontab`. Remove the `smart_text` monkey-patch once tagging is gone.
 - Security in place: `@login_required` + org check on `update_permissions`, `remove_member`, `change_ownership`, `add/remove_member_to_job*`, `upload_vacancy_file`, `delete_vacancy_file`, `curriculum_to_pdf`, `resume_builder_templates`; replace Hashids invitation tokens with `secrets.token_urlsafe`; `ALLOWED_HOSTS` from env with wildcard; `SESSION_COOKIE_*`, `CSRF_*`, HSTS, `SECURE_PROXY_SSL_HEADER`; fail hard if `SECRET_KEY` missing; `eval` → whitelist dict in `customField/forms.py`.
 - Disable payments enforcement: remove `ExpiredPlanMiddleware`, the `packages` context processor, the three `PriceSlab.objects.get(id=2)` calls, and `CRONJOBS`.
-- Add `Dockerfile` (python:3.12-slim + pango/cairo), `render.yaml`, `.github/workflows/ci.yml` (ruff, pytest with Postgres service, docker build), `ruff.toml`, `pytest.ini`, `.pre-commit-config.yaml` on Python 3.12.
+- Add `Dockerfile` (python:3.12-slim + pango/cairo), `railway.json`, `.github/workflows/ci.yml` (ruff, pytest with Postgres service, docker build), `ruff.toml`, `pytest.ini`, `.pre-commit-config.yaml` on Python 3.12.
 - Switch local and CI DB to PostgreSQL; fix MySQL-isms; reload fixtures; delete the 8 stale tests.
-- Deploy staging on Render free instance + Neon branch + console email; add `/healthz` and Sentry.
+- Deploy staging on Railway service + Neon branch + console email; add `/healthz` and Sentry.
 
 **Dependencies:** none. **Effort:** 6–7 days. **Risks:** MySQL-specific query behaviour; hidden imports from removed apps.
 **Definition of done:** CI green on Postgres; staging URL serving the existing UI; no `AllowAny` API routes; the five critical findings closed and covered by a tenancy test; repository ~40k lines smaller.
@@ -1092,7 +1092,7 @@ flowchart TB
 
 - Test suite to ~60 tests: tenancy isolation sweep, permissions matrix (owner/admin/member on every mutating view), apply flow, move/reject/hire, invitations, email rendering, search, export.
 - Security pass: OWASP checklist, dependency audit (`pip-audit`), rate limits on public endpoints, upload magic-byte checks, `|safe` audit (all remaining sinks sanitized via `nh3`), CSP header, admin behind 2FA (allauth MFA).
-- Ops: production Render instance (Starter), Neon production project with PITR on when paid, R2 production bucket with lifecycle rule for orphaned uploads, Resend production domain, Sentry alerts, UptimeRobot, backup verification (Neon branch restore drill), runbook.
+- Ops: production Railway service (Hobby), Neon production project with PITR on when paid, R2 production bucket with lifecycle rule for orphaned uploads, Resend production domain, Sentry alerts, UptimeRobot, backup verification (Neon branch restore drill), runbook.
 - Data: migrate any real data from the current MySQL instance (dump → Postgres via Django fixtures per app, files → R2); soft-delete and org export command (GDPR-lite).
 - Docs: `LOCAL_DEVELOPMENT.md` rewrite for Postgres/Docker, architecture doc (this file), env matrix, on-call basics.
 - Load sanity: `locust` or `hey` at 50 concurrent users on careers + apply.
@@ -1106,7 +1106,7 @@ flowchart TB
 |---|---|---|---|
 | 1 | Close the five critical security holes in place | 0 | P0 |
 | 2 | Delete dead apps, APIs, deps, secrets; rotate credentials | 0 | P0 |
-| 3 | Dockerfile, CI, Postgres locally, staging on Render + Neon | 0 | P0 |
+| 3 | Dockerfile, CI, Postgres locally, staging on Railway | 0 | P0 |
 | 4 | Tenancy layer + `OrganizationMember` + isolation test | 1 | P0 |
 | 5 | R2 storage + signed downloads | 1 | P0 |
 | 6 | Mailer + outbox + Resend + task runner | 1 | P0 |
